@@ -5,15 +5,13 @@ package.domain = org.autoticket
 source.dir = .
 source.include_exts = py,png,jpg,kv,atlas,ttf
 version = 1.0.0
-version.regex = __version__ = ['"](.*)['"]
-version.filename = %(source.dir)s/main.py
 requirements = python3,kivy==2.3.0,pycryptodome,pycryptodomex,requests,pyqrcode,pillow,urllib3
 orientation = portrait
 osx.python_version = 3
 osx.kivy_version = 2.1.0
 fullscreen = 0
 presplash =
-icon =
+icon = lib/icon.png
 android.api = 34
 android.minapi = 21
 android.sdk = 34
