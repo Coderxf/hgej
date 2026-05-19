@@ -1,0 +1,7 @@
+kivy
+pycryptodome
+pycryptodomex
+requests
+pyqrcode
+pillow
+urllib3
