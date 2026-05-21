@@ -19,6 +19,7 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.dt.hgej.BuildConfig
 import com.dt.hgej.data.model.UserConfig
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -33,7 +34,17 @@ fun MainScreen(
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("杭工e家助手") },
+                title = {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text("杭工e家助手")
+                        Spacer(Modifier.width(6.dp))
+                        Text(
+                            text = "v${BuildConfig.VERSION_NAME}",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                },
                 actions = {
                     if (uiState.isLoggedIn) {
                         TextButton(onClick = { viewModel.logout() }) {
