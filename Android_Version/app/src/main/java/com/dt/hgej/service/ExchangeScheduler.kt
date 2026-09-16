@@ -18,9 +18,12 @@ class ExchangeScheduler(
 
     fun start(config: UserConfig) {
         stop()
-        job = scope.launch {
-            val count = config.runCount.toIntOrNull() ?: 100
-            val sleepMs = (config.timeSleep.toDoubleOrNull() ?: 0.08) * 1000
+        val newJob = scope.launch {
+            val requestedCount = config.runCount.toIntOrNull() ?: 100
+            val count = requestedCount.coerceIn(1, 500)
+            val sleepMs = ((config.timeSleep.toDoubleOrNull() ?: 0.08) * 1000)
+                .toLong()
+                .coerceIn(50, 60_000)
 
             onRunningChange?.invoke(true)
 
@@ -33,11 +36,15 @@ class ExchangeScheduler(
                 onLog("未设置目标时间，立即执行")
             }
 
-            onLog("开始并发兑换，次数: $count，间隔: ${sleepMs.toLong()}ms")
+            if (count != requestedCount) {
+                onLog("次数已限制为 $count（范围 1~500）")
+            }
+            onLog("开始并发兑换，次数: $count，间隔: ${sleepMs}ms")
 
+            val pending = mutableListOf<Job>()
             for (i in 1..count) {
                 if (!isActive) break
-                launch {
+                pending += launch {
                     val result = apiService.exchangeCoupon(
                         config.loginName,
                         config.userId,
@@ -47,12 +54,19 @@ class ExchangeScheduler(
                     val msg = result?.msg ?: "无响应"
                     onLog("[$i] $msg")
                 }
-                delay(sleepMs.toLong())
+                delay(sleepMs)
             }
+            // 等收尾请求全部返回后再打完成日志
+            pending.joinAll()
             onLog("兑换任务完成")
         }
-        job?.invokeOnCompletion {
-            onRunningChange?.invoke(false)
+        job = newJob
+        newJob.invokeOnCompletion {
+            // job 为 null 说明是主动 stop；job 已换成新任务说明已被 restart 取代，
+            // 两种之外的正常结束都要把运行状态置回 false
+            if (job == null || job === newJob) {
+                onRunningChange?.invoke(false)
+            }
         }
     }
 
@@ -71,7 +85,8 @@ class ExchangeScheduler(
     }
 
     private suspend fun waitUntilTarget(target: Date) {
-        while (job?.isActive == true) {
+        // 取消任务时 delay 会抛出 CancellationException 退出，无需显式检查 job 状态
+        while (true) {
             val now = Date()
             if (now >= target) break
             val diff = target.time - now.time

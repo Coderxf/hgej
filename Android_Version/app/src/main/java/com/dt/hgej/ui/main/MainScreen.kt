@@ -1,5 +1,7 @@
 package com.dt.hgej.ui.main
 
+import android.content.Intent
+import android.net.Uri
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -199,6 +201,41 @@ fun MainScreen(
                 }
             }
         }
+    }
+
+    uiState.updateInfo?.let { info ->
+        AlertDialog(
+            onDismissRequest = { if (!info.forceUpdate) viewModel.dismissUpdate() },
+            title = { Text("发现新版本 v${info.versionName ?: info.versionCode}") },
+            text = {
+                Text(info.changelog?.takeIf { it.isNotBlank() } ?: "修复已知问题，优化使用体验")
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        info.downloadUrl?.takeIf { it.isNotBlank() }?.let { url ->
+                            try {
+                                context.startActivity(
+                                    Intent(Intent.ACTION_VIEW, Uri.parse(url))
+                                        .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                                )
+                            } catch (_: Exception) {
+                            }
+                        }
+                        if (!info.forceUpdate) viewModel.dismissUpdate()
+                    }
+                ) {
+                    Text("立即更新")
+                }
+            },
+            dismissButton = {
+                if (!info.forceUpdate) {
+                    TextButton(onClick = { viewModel.dismissUpdate() }) {
+                        Text("稍后再说")
+                    }
+                }
+            }
+        )
     }
 }
 

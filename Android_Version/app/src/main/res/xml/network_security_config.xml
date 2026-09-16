@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 默认禁止明文 http，只对更新检查服务器按域名放行。
+     如果更新服务器暂无 https，把下面的占位域名换成你的服务器域名，
+     并与 ApiConstants.UPDATE_CHECK_URL 的域名保持一致。 -->
+<network-security-config>
+    <base-config cleartextTrafficPermitted="false" />
+    <domain-config cleartextTrafficPermitted="true">
+        <domain includeSubdomains="true">your-aliyun-server.com</domain>
+    </domain-config>
+</network-security-config>

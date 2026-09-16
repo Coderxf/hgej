@@ -20,4 +20,9 @@ object ApiConstants {
     const val OP80_RECORD = "/unionApp/interf/front/OP/OP80"
     const val OL83_TICKET = "/unionApp/interf/front/OL/OL83"
     const val QR_APPLY = "/hzcitizencodeengine/codeEngine/apply"
+
+    // ========== 应用更新检查 ==========
+    // 阿里云服务器上 update.json 的完整地址，返回格式见 docs/更新检查配置.md
+    // TODO: 部署后替换为你自己的服务器地址
+    const val UPDATE_CHECK_URL = "http://your-aliyun-server.com/update/app_update.json"
 }

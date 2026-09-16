@@ -100,30 +100,38 @@ nVU2G0dqUl6D
         return Base64.encodeToString(signature.sign(), Base64.NO_WRAP)
     }
 
-    fun decryptData2(data2: String): String {
-        val rsaEnc = data2.substring(0, 172)
-        val desEnc = data2.substring(172)
+    /**
+     * 解密服务器返回的 data2 字段。数据格式异常（长度不足、解密失败等）时返回 null，不抛异常。
+     */
+    fun decryptData2(data2: String): String? {
+        return try {
+            if (data2.length <= 172) return null
+            val rsaEnc = data2.substring(0, 172)
+            val desEnc = data2.substring(172)
 
-        val rsaEncBytes = Base64.decode(rsaEnc, Base64.NO_WRAP)
-        val desEncBytes = Base64.decode(desEnc, Base64.NO_WRAP)
+            val rsaEncBytes = Base64.decode(rsaEnc, Base64.NO_WRAP)
+            val desEncBytes = Base64.decode(desEnc, Base64.NO_WRAP)
 
-        val keyBytes = getPrivateKeyBytes(PRIVATE_KEY_PEM)
-        val keyFactory = KeyFactory.getInstance("RSA")
-        val spec = PKCS8EncodedKeySpec(keyBytes)
-        val privateKey = keyFactory.generatePrivate(spec)
-        val rsaCipher = Cipher.getInstance("RSA/ECB/PKCS1Padding")
-        rsaCipher.init(Cipher.DECRYPT_MODE, privateKey)
-        val aBytes = rsaCipher.doFinal(rsaEncBytes)
-        val a = String(aBytes)
+            val keyBytes = getPrivateKeyBytes(PRIVATE_KEY_PEM)
+            val keyFactory = KeyFactory.getInstance("RSA")
+            val spec = PKCS8EncodedKeySpec(keyBytes)
+            val privateKey = keyFactory.generatePrivate(spec)
+            val rsaCipher = Cipher.getInstance("RSA/ECB/PKCS1Padding")
+            rsaCipher.init(Cipher.DECRYPT_MODE, privateKey)
+            val aBytes = rsaCipher.doFinal(rsaEncBytes)
+            val a = String(aBytes)
 
-        val desKey = ("HTt0Hzsu" + a).toByteArray()
-        val iv = a.substring(0, 8).toByteArray()
-        val secretKey = SecretKeySpec(desKey, "DESede")
-        val desCipher = Cipher.getInstance("DESede/CBC/PKCS5Padding")
-        desCipher.init(Cipher.DECRYPT_MODE, secretKey, IvParameterSpec(iv))
-        val decrypted = desCipher.doFinal(desEncBytes)
+            val desKey = ("HTt0Hzsu" + a).toByteArray()
+            val iv = a.substring(0, 8).toByteArray()
+            val secretKey = SecretKeySpec(desKey, "DESede")
+            val desCipher = Cipher.getInstance("DESede/CBC/PKCS5Padding")
+            desCipher.init(Cipher.DECRYPT_MODE, secretKey, IvParameterSpec(iv))
+            val decrypted = desCipher.doFinal(desEncBytes)
 
-        return String(decrypted)
+            String(decrypted)
+        } catch (e: Exception) {
+            null
+        }
     }
 
     fun buildEncryptedPayload(

@@ -8,6 +8,7 @@ import com.dt.hgej.data.local.PreferencesManager
 import com.dt.hgej.data.model.CaptchaResponse
 import com.dt.hgej.repository.AuthRepository
 import com.dt.hgej.util.Utils
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -41,9 +42,13 @@ class LoginViewModel(application: Application) : AndroidViewModel(application) {
         fetchCaptcha()
     }
 
-    fun fetchCaptcha() {
+    fun fetchCaptcha(clearError: Boolean = true) {
         viewModelScope.launch {
-            _uiState.value = _uiState.value.copy(isLoading = true, error = null, captchaCode = "")
+            _uiState.value = _uiState.value.copy(
+                isLoading = true,
+                error = if (clearError) null else _uiState.value.error,
+                captchaCode = ""
+            )
             val result = authRepository.getCaptcha()
             result.onSuccess { captcha ->
                 val imgBytes = Utils.decodeBase64Image(captcha.img)
@@ -79,7 +84,14 @@ class LoginViewModel(application: Application) : AndroidViewModel(application) {
 
     fun toggleMode() {
         val current = _uiState.value.isPasswordMode
-        _uiState.value = _uiState.value.copy(isPasswordMode = !current)
+        countdownJob?.cancel()
+        _uiState.value = _uiState.value.copy(
+            isPasswordMode = !current,
+            smsSent = false,
+            smsCode = "",
+            countdown = 0,
+            error = null
+        )
     }
 
     fun login() {
@@ -95,6 +107,10 @@ class LoginViewModel(application: Application) : AndroidViewModel(application) {
             if (state.isPasswordMode) {
                 if (state.password.isBlank()) {
                     _uiState.value = _uiState.value.copy(isLoading = false, error = "请输入密码")
+                    return@launch
+                }
+                if (state.captchaCode.isBlank()) {
+                    _uiState.value = _uiState.value.copy(isLoading = false, error = "请输入图形验证码")
                     return@launch
                 }
                 val result = authRepository.passwordLogin(
@@ -118,6 +134,8 @@ class LoginViewModel(application: Application) : AndroidViewModel(application) {
                         isLoading = false,
                         error = e.message
                     )
+                    // 图形验证码一次性，失败后自动换一张（保留错误提示）
+                    fetchCaptcha(clearError = false)
                 }
             } else {
                 if (!state.smsSent) {
@@ -134,6 +152,7 @@ class LoginViewModel(application: Application) : AndroidViewModel(application) {
                             isLoading = false,
                             error = e.message
                         )
+                        fetchCaptcha(clearError = false)
                     }
                 } else {
                     if (state.smsCode.isBlank()) {
@@ -162,8 +181,11 @@ class LoginViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
+    private var countdownJob: Job? = null
+
     private fun startCountdown() {
-        viewModelScope.launch {
+        countdownJob?.cancel()
+        countdownJob = viewModelScope.launch {
             for (i in 60 downTo 0) {
                 _uiState.value = _uiState.value.copy(countdown = i)
                 if (i == 0) break

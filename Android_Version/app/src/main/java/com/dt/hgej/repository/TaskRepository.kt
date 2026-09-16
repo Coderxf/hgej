@@ -1,7 +1,6 @@
 package com.dt.hgej.repository
 
 import com.dt.hgej.data.api.ApiService
-import com.dt.hgej.data.model.ExchangeResponse
 import kotlinx.coroutines.delay
 
 class TaskRepository(private val apiService: ApiService) {
@@ -28,24 +27,6 @@ class TaskRepository(private val apiService: ApiService) {
             onLog("积分查询结果: ${query?.msg ?: "无响应"}")
 
             Result.success("每日任务执行完成")
-        } catch (e: Exception) {
-            Result.failure(e)
-        }
-    }
-
-    suspend fun exchangeCoupon(
-        loginName: String,
-        userId: String,
-        sesId: String,
-        exchangeId: String
-    ): Result<ExchangeResponse> {
-        return try {
-            val response = apiService.exchangeCoupon(loginName, userId, sesId, exchangeId)
-            if (response != null) {
-                Result.success(response)
-            } else {
-                Result.failure(Exception("兑换请求失败"))
-            }
         } catch (e: Exception) {
             Result.failure(e)
         }

@@ -36,7 +36,10 @@ class QrViewModel(application: Application) : AndroidViewModel(application) {
 
     fun loadData() {
         viewModelScope.launch {
-            _uiState.value = QrUiState(isLoading = true)
+            _uiState.value = QrUiState(
+                isLoading = true,
+                currentAwardType = _uiState.value.currentAwardType
+            )
             val config = prefsManager.getConfig()
 
             if (config.loginName.isBlank() || config.sesId.isBlank()) {

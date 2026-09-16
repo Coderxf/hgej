@@ -5,12 +5,16 @@ import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.dt.hgej.data.api.ApiService
 import com.dt.hgej.data.local.PreferencesManager
+import com.dt.hgej.data.model.UpdateInfo
 import com.dt.hgej.data.model.UserConfig
 import com.dt.hgej.data.model.UserInfoResponse
 import com.dt.hgej.repository.QrRepository
 import com.dt.hgej.repository.TaskRepository
 import com.dt.hgej.service.ExchangeScheduler
+import com.dt.hgej.update.UpdateManager
 import com.dt.hgej.util.Utils
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -24,7 +28,8 @@ data class MainUiState(
     val remainIntegral: Int = 0,
     val logs: List<String> = emptyList(),
     val schedulerRunning: Boolean = false,
-    val isDoingDailyTask: Boolean = false
+    val isDoingDailyTask: Boolean = false,
+    val updateInfo: UpdateInfo? = null
 )
 
 class MainViewModel(application: Application) : AndroidViewModel(application) {
@@ -70,12 +75,35 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             }
         }
         addLog("程序已启动")
+        checkUpdate()
+    }
+
+    /**
+     * 启动时检查更新，有新版本时弹窗提示，检查失败静默忽略
+     */
+    private fun checkUpdate() {
+        viewModelScope.launch {
+            val info = UpdateManager.checkForUpdate(getApplication())
+            if (info != null) {
+                _uiState.value = _uiState.value.copy(updateInfo = info)
+                addLog("发现新版本: v${info.versionName ?: info.versionCode}")
+            }
+        }
+    }
+
+    fun dismissUpdate() {
+        _uiState.value = _uiState.value.copy(updateInfo = null)
     }
 
     private suspend fun queryUserInfo(config: UserConfig? = null) {
         val cfg = config ?: _uiState.value.config
         if (cfg.loginName.isBlank() || cfg.sesId.isBlank()) return
-        val info = apiService.getUserInfo(cfg.loginName, cfg.sesId)
+        val info = try {
+            apiService.getUserInfo(cfg.loginName, cfg.sesId)
+        } catch (e: Exception) {
+            addLog("获取用户信息失败: ${e.message}")
+            null
+        } ?: return
         if (info != null && info.result == "0") {
             val name = info.name ?: info.sensitive_name ?: ""
             val integral = info.remain_integral?.toIntOrNull() ?: 0
@@ -113,9 +141,14 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
+    private var configSaveJob: Job? = null
+
     fun updateConfig(config: UserConfig) {
         _uiState.value = _uiState.value.copy(config = config)
-        viewModelScope.launch {
+        // 输入过程每个字符都会触发，300ms 防抖后只落盘最后一次
+        configSaveJob?.cancel()
+        configSaveJob = viewModelScope.launch {
+            delay(300)
             prefsManager.saveConfig(config)
         }
     }

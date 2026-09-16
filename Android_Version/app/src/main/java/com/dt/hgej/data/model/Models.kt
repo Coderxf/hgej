@@ -123,3 +123,11 @@ data class UserConfig(
     val runCount: String = "100",
     val timeSleep: String = "0.08"
 )
+
+data class UpdateInfo(
+    val versionCode: Long = 0,
+    val versionName: String? = null,
+    val downloadUrl: String? = null,
+    val changelog: String? = null,
+    val forceUpdate: Boolean = false
+)

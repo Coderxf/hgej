@@ -90,8 +90,8 @@ class ApiService {
     ): T? {
         val payload = baseParams() + extraParams
         val response = postEncrypted(url, payload, encryptFields)
-        val decrypted = decryptData2(response)
-        return if (decrypted != null) parseDecrypted(decrypted, clazz) else null
+        val decrypted = decryptData2(response) ?: return null
+        return parseDecrypted(decrypted, clazz)
     }
 
     // ========== Auth APIs ==========

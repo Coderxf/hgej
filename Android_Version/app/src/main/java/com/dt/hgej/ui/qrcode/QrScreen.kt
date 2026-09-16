@@ -1,21 +1,38 @@
 package com.dt.hgej.ui.qrcode
 
+import android.Manifest
+import android.app.Activity
+import android.content.Context
+import android.content.ContextWrapper
+import android.content.pm.PackageManager
 import android.graphics.BitmapFactory
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
+import androidx.compose.material.icons.filled.PhotoCamera
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
+import androidx.core.content.ContextCompat
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.dt.hgej.util.ScreenCapture
 import com.dt.hgej.util.Utils
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -24,8 +41,53 @@ fun QrScreen(
     viewModel: QrViewModel = viewModel()
 ) {
     val uiState by viewModel.uiState.collectAsState()
+    val context = LocalContext.current
+    val activity = remember { context.findActivity() }
+    val scope = rememberCoroutineScope()
+    val snackbarHostState = remember { SnackbarHostState() }
+
+    suspend fun doCapture() {
+        val window = activity?.window ?: return
+        val bitmap = ScreenCapture.captureWindow(window)
+        if (bitmap == null) {
+            snackbarHostState.showSnackbar("截图失败，请重试")
+            return
+        }
+        val fileName = "绿色出行码_" +
+            SimpleDateFormat("yyyyMMdd_HHmmss", Locale.getDefault()).format(Date())
+        val savedPath = withContext(Dispatchers.IO) {
+            ScreenCapture.saveToGallery(context, bitmap, fileName)
+        }
+        snackbarHostState.showSnackbar(
+            if (savedPath != null) "截图已保存到相册: $savedPath" else "保存失败，请检查存储空间"
+        )
+    }
+
+    val storagePermissionLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestPermission()
+    ) { granted ->
+        if (granted) {
+            scope.launch { doCapture() }
+        } else {
+            scope.launch { snackbarHostState.showSnackbar("未授予存储权限，无法保存截图") }
+        }
+    }
+
+    fun onCaptureClick() {
+        if (ScreenCapture.needsStoragePermission() &&
+            ContextCompat.checkSelfPermission(
+                context,
+                Manifest.permission.WRITE_EXTERNAL_STORAGE
+            ) != PackageManager.PERMISSION_GRANTED
+        ) {
+            storagePermissionLauncher.launch(Manifest.permission.WRITE_EXTERNAL_STORAGE)
+        } else {
+            scope.launch { doCapture() }
+        }
+    }
 
     Scaffold(
+        snackbarHost = { SnackbarHost(snackbarHostState) },
         topBar = {
             TopAppBar(
                 title = { Text("绿色出行码") },
@@ -37,6 +99,9 @@ fun QrScreen(
                 actions = {
                     IconButton(onClick = { viewModel.loadData() }) {
                         Icon(Icons.Filled.Refresh, contentDescription = "刷新")
+                    }
+                    IconButton(onClick = { onCaptureClick() }) {
+                        Icon(Icons.Filled.PhotoCamera, contentDescription = "截图保存")
                     }
                 }
             )
@@ -162,6 +227,15 @@ fun QrScreen(
             }
         }
     }
+}
+
+private fun Context.findActivity(): Activity? {
+    var ctx = this
+    while (ctx is ContextWrapper) {
+        if (ctx is Activity) return ctx
+        ctx = ctx.baseContext
+    }
+    return null
 }
 
 private fun hexStringToByteArray(hex: String): ByteArray {

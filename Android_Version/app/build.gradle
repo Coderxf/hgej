@@ -3,6 +3,9 @@ plugins {
     id 'org.jetbrains.kotlin.android'
 }
 
+// release 签名依赖仓库根目录（Android_Version/）下的 keystore.properties
+// （storeFile/storePassword/keyAlias/keyPassword）和其中的签名文件；
+// 换机构建请先补齐，否则 release 包会在签名阶段失败
 def keystorePropertiesFile = rootProject.file("keystore.properties")
 def keystoreProperties = new Properties()
 if (keystorePropertiesFile.exists()) {
@@ -25,8 +28,8 @@ android {
         applicationId "com.dt.hgej"
         minSdk 26
         targetSdk 34
-        versionCode 1
-        versionName "1.0.9"
+        versionCode 2
+        versionName "1.1.0"
 
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables {
@@ -53,11 +56,12 @@ android {
     }
     buildFeatures {
         compose true
+        buildConfig true
     }
     composeOptions {
         kotlinCompilerExtensionVersion '1.5.1'
     }
-    packagingOptions {
+    packaging {
         resources {
             excludes += '/META-INF/{AL2.0,LGPL2.1}'
         }
@@ -94,9 +98,6 @@ dependencies {
 
     // Coroutines
     implementation 'org.jetbrains.kotlinx:kotlinx-coroutines-android:1.7.3'
-
-    // Coil for image loading (captcha)
-    implementation 'io.coil-kt:coil-compose:2.4.0'
 
     testImplementation 'junit:junit:4.13.2'
     androidTestImplementation 'androidx.test.ext:junit:1.1.5'
