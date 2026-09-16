@@ -7,6 +7,8 @@ import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AccessTime
+import androidx.compose.material.icons.filled.Clear
+import androidx.compose.material.icons.filled.ContentPaste
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Stop
@@ -17,9 +19,10 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.platform.LocalClipboardManager
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
-import com.dt.hgej.BuildConfig
 import com.dt.hgej.data.model.UserConfig
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -30,6 +33,12 @@ fun MainScreen(
     viewModel: MainViewModel = viewModel()
 ) {
     val uiState by viewModel.uiState.collectAsState()
+    val context = LocalContext.current
+    val versionName = remember {
+        try {
+            context.packageManager.getPackageInfo(context.packageName, 0).versionName ?: ""
+        } catch (_: Exception) { "" }
+    }
 
     Scaffold(
         topBar = {
@@ -39,7 +48,7 @@ fun MainScreen(
                         Text("杭工e家助手")
                         Spacer(Modifier.width(6.dp))
                         Text(
-                            text = "v${BuildConfig.VERSION_NAME}",
+                            text = "v$versionName",
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
@@ -71,6 +80,19 @@ fun MainScreen(
                 Column(modifier = Modifier.padding(12.dp)) {
                     Text("登录状态: ${if (uiState.isLoggedIn) "已登录" else "未登录"}", style = MaterialTheme.typography.bodyMedium)
                     if (uiState.isLoggedIn) {
+                        if (uiState.userName.isNotBlank()) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Text("用户: ${uiState.userName}", style = MaterialTheme.typography.bodySmall)
+                                if (uiState.remainIntegral > 0) {
+                                    Spacer(Modifier.width(8.dp))
+                                    Text(
+                                        text = "积分: ${uiState.remainIntegral}",
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.primary
+                                    )
+                                }
+                            }
+                        }
                         Text("账号: ${uiState.config.loginName}", style = MaterialTheme.typography.bodySmall)
                         Text("SES_ID: ${uiState.config.sesId.take(16)}...", style = MaterialTheme.typography.bodySmall)
                     }
@@ -84,6 +106,14 @@ fun MainScreen(
                 onConfigChange = viewModel::updateConfig,
                 onAutoFill = viewModel::autoFillRunTime
             )
+            if (uiState.config.loginName.isNotBlank() && uiState.config.sesId.isNotBlank()) {
+                OutlinedButton(
+                    onClick = { viewModel.applyManualCredentials() },
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Text("应用配置凭证")
+                }
+            }
 
             // Action buttons
             Row(
@@ -178,6 +208,7 @@ fun ConfigForm(
     onConfigChange: (UserConfig) -> Unit,
     onAutoFill: () -> Unit = {}
 ) {
+    val clipboardManager = LocalClipboardManager.current
     Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
         OutlinedTextField(
             value = config.loginName,
@@ -185,7 +216,19 @@ fun ConfigForm(
             label = { Text("LOGIN_NAME") },
             singleLine = true,
             modifier = Modifier.fillMaxWidth(),
-            textStyle = MaterialTheme.typography.bodySmall
+            textStyle = MaterialTheme.typography.bodySmall,
+            trailingIcon = {
+                Row {
+                    IconButton(onClick = { onConfigChange(config.copy(loginName = "")) }) {
+                        Icon(Icons.Filled.Clear, contentDescription = "清除", modifier = Modifier.size(18.dp))
+                    }
+                    IconButton(onClick = {
+                        clipboardManager.getText()?.text?.let { onConfigChange(config.copy(loginName = it)) }
+                    }) {
+                        Icon(Icons.Filled.ContentPaste, contentDescription = "粘贴", modifier = Modifier.size(18.dp))
+                    }
+                }
+            }
         )
         OutlinedTextField(
             value = config.sesId,
@@ -193,7 +236,19 @@ fun ConfigForm(
             label = { Text("SES_ID") },
             singleLine = true,
             modifier = Modifier.fillMaxWidth(),
-            textStyle = MaterialTheme.typography.bodySmall
+            textStyle = MaterialTheme.typography.bodySmall,
+            trailingIcon = {
+                Row {
+                    IconButton(onClick = { onConfigChange(config.copy(sesId = "")) }) {
+                        Icon(Icons.Filled.Clear, contentDescription = "清除", modifier = Modifier.size(18.dp))
+                    }
+                    IconButton(onClick = {
+                        clipboardManager.getText()?.text?.let { onConfigChange(config.copy(sesId = it)) }
+                    }) {
+                        Icon(Icons.Filled.ContentPaste, contentDescription = "粘贴", modifier = Modifier.size(18.dp))
+                    }
+                }
+            }
         )
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             OutlinedTextField(

@@ -25,32 +25,36 @@ class ApiService {
         payload: Map<String, Any?>,
         encryptFields: List<String> = encryptKeys
     ): ApiResponse? = withContext(Dispatchers.IO) {
-        val encryptedPayload = CryptoManager.buildEncryptedPayload(
-            baseParams = payload,
-            encryptKeys = encryptFields,
-            noSignKeys = noSignKeys
-        )
-        val jsonBody = gson.toJson(encryptedPayload)
-        val request = Request.Builder()
-            .url(url)
-            .header("Host", "app.hzgh.org.cn")
-            .header("Accept", "application/json, text/plain, */*")
-            .header("User-Agent", "Mozilla/5.0 (Linux; Android 14) AppleWebKit/537.36 (KHTML, like Gecko) Version/4.0 Chrome/110.0.5481.154 Mobile Safari/537.36;unionApp;HZGH")
-            .header("Content-Type", "application/json;charset=UTF-8")
-            .header("Origin", "https://app.hzgh.org.cn:8123")
-            .header("X-Requested-With", "com.zjte.hanggongefamily")
-            .header("Referer", "https://app.hzgh.org.cn:8123/")
-            .post(RequestBody.create(HttpClient.JSON_MEDIA_TYPE, jsonBody))
-            .build()
-        val response = client.newCall(request).execute()
-        val body = response.body?.string()
-        if (body != null) {
-            try {
-                gson.fromJson(body, ApiResponse::class.java)
-            } catch (e: Exception) {
-                null
-            }
-        } else null
+        try {
+            val encryptedPayload = CryptoManager.buildEncryptedPayload(
+                baseParams = payload,
+                encryptKeys = encryptFields,
+                noSignKeys = noSignKeys
+            )
+            val jsonBody = gson.toJson(encryptedPayload)
+            val request = Request.Builder()
+                .url(url)
+                .header("Host", "app.hzgh.org.cn")
+                .header("Accept", "application/json, text/plain, */*")
+                .header("User-Agent", "Mozilla/5.0 (Linux; Android 14) AppleWebKit/537.36 (KHTML, like Gecko) Version/4.0 Chrome/110.0.5481.154 Mobile Safari/537.36;unionApp;HZGH")
+                .header("Content-Type", "application/json;charset=UTF-8")
+                .header("Origin", "https://app.hzgh.org.cn:8123")
+                .header("X-Requested-With", "com.zjte.hanggongefamily")
+                .header("Referer", "https://app.hzgh.org.cn:8123/")
+                .post(RequestBody.create(HttpClient.JSON_MEDIA_TYPE, jsonBody))
+                .build()
+            val response = client.newCall(request).execute()
+            val body = response.body?.string()
+            if (body != null) {
+                try {
+                    gson.fromJson(body, ApiResponse::class.java)
+                } catch (e: Exception) {
+                    null
+                }
+            } else null
+        } catch (e: Exception) {
+            null
+        }
     }
 
     private fun decryptData2(apiResponse: ApiResponse?): String? {
@@ -290,48 +294,50 @@ class ApiService {
     }
 
     suspend fun getQrCode(token: String): QrCodeResponse? = withContext(Dispatchers.IO) {
-        val ts = System.currentTimeMillis().toString()
-        val globalSeq = "2500" + (1..14).map {
-            "0123456789abcdef".toList().random()
-        }.joinToString("")
-        val payload = mapOf(
-            "latitude" to null,
-            "longitude" to null,
-            "version" to "1.0.0",
-            "isImage" to "1",
-            "timestamp" to ts,
-            "globalSeq" to globalSeq
-        )
-        val jsonBody = gson.toJson(payload)
-        val request = Request.Builder()
-            .url(ApiConstants.QR_BASE_URL + ApiConstants.QR_APPLY)
-            .header("Host", "hzcode.96225.com")
-            .header("Accept", "application/json, text/plain, */*")
-            .header("User-Agent", "Mozilla/5.0 (Linux; Android 12; 23113RKC6C Build/V417IR; wv) AppleWebKit/537.36 (KHTML, like Gecko) Version/4.0 Chrome/110.0.5481.154 Mobile Safari/537.36;unionApp;HZGH")
-            .header("Content-Type", "application/json;charset=UTF-8")
-            .header("Origin", "https://hzcode.96225.com")
-            .header("X-Requested-With", "com.zjte.hanggongefamily")
-            .header("Referer", "https://hzcode.96225.com/hzcitizencodeh5/")
-            .header("token", token)
-            .post(RequestBody.create(HttpClient.JSON_MEDIA_TYPE, jsonBody))
-            .build()
-        val response = client.newCall(request).execute()
-        val body = response.body?.string()
-        if (body != null) {
-            try {
-                val wrapper = gson.fromJson(body, QrCodeWrapper::class.java)
-                wrapper.data
-            } catch (e: Exception) { null }
-        } else null
+        try {
+            val ts = System.currentTimeMillis().toString()
+            val globalSeq = "2500" + (1..14).map {
+                "0123456789abcdef".toList().random()
+            }.joinToString("")
+            val payload = mapOf(
+                "latitude" to null,
+                "longitude" to null,
+                "version" to "1.0.0",
+                "isImage" to "1",
+                "timestamp" to ts,
+                "globalSeq" to globalSeq
+            )
+            val jsonBody = gson.toJson(payload)
+            val request = Request.Builder()
+                .url(ApiConstants.QR_BASE_URL + ApiConstants.QR_APPLY)
+                .header("Host", "hzcode.96225.com")
+                .header("Accept", "application/json, text/plain, */*")
+                .header("User-Agent", "Mozilla/5.0 (Linux; Android 12; 23113RKC6C Build/V417IR; wv) AppleWebKit/537.36 (KHTML, like Gecko) Version/4.0 Chrome/110.0.5481.154 Mobile Safari/537.36;unionApp;HZGH")
+                .header("Content-Type", "application/json;charset=UTF-8")
+                .header("Origin", "https://hzcode.96225.com")
+                .header("X-Requested-With", "com.zjte.hanggongefamily")
+                .header("Referer", "https://hzcode.96225.com/hzcitizencodeh5/")
+                .header("token", token)
+                .post(RequestBody.create(HttpClient.JSON_MEDIA_TYPE, jsonBody))
+                .build()
+            val response = client.newCall(request).execute()
+            val body = response.body?.string()
+            if (body != null) {
+                try {
+                    val wrapper = gson.fromJson(body, QrCodeWrapper::class.java)
+                    wrapper.data
+                } catch (e: Exception) { null }
+            } else null
+        } catch (e: Exception) { null }
     }
 
-    suspend fun getSubwayTickets(loginName: String, sesId: String): SubwayTicketResponse? {
+    suspend fun getSubwayTickets(loginName: String, sesId: String, awardType: String = "1"): SubwayTicketResponse? {
         val params = mapOf<String, Any?>(
             "login_name" to loginName,
             "user_id" to loginName,
             "ses_id" to sesId,
             "use_state" to "1",
-            "award_type" to "1",
+            "award_type" to awardType,
             "page_size" to 10,
             "page_num" to 1
         )
@@ -342,4 +348,15 @@ class ApiService {
         )
     }
 
+    suspend fun getUserInfo(loginName: String, sesId: String): UserInfoResponse? {
+        val params = mapOf<String, Any?>(
+            "login_name" to loginName,
+            "ses_id" to sesId
+        )
+        return execute(
+            url = baseUrl + ApiConstants.U005_QUERY,
+            extraParams = params,
+            clazz = UserInfoResponse::class.java
+        )
+    }
 }

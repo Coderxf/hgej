@@ -100,27 +100,62 @@ fun QrScreen(
 
                             Text("余额: ${qrCode.money ?: "未知"}", style = MaterialTheme.typography.bodyLarge)
                             Text("卡号: ${qrCode.trafficCardNo ?: "未知"}", style = MaterialTheme.typography.bodyMedium)
-                            Text("有效期: ${qrCode.deadTime ?: qrCode.deadline ?: "未知"}", style = MaterialTheme.typography.bodySmall)
+                            Text("有效期: ${Utils.formatTimestamp(qrCode.deadTime ?: qrCode.deadline)}", style = MaterialTheme.typography.bodySmall)
                         }
                     }
                 }
 
-                // Ticket Stats
-                val tickets = uiState.tickets?.data
-                if (tickets != null) {
-                    Card(modifier = Modifier.fillMaxWidth()) {
-                        Column(
-                            modifier = Modifier.padding(16.dp),
-                            verticalArrangement = Arrangement.spacedBy(4.dp)
+                // Metro Coupons
+                Card(modifier = Modifier.fillMaxWidth()) {
+                    Column(
+                        modifier = Modifier.padding(16.dp),
+                        verticalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        Text("地铁优惠券", style = MaterialTheme.typography.titleMedium)
+                        Divider()
+
+                        Row(
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            modifier = Modifier.fillMaxWidth()
                         ) {
-                            Text("地铁券统计", style = MaterialTheme.typography.titleMedium)
+                            listOf("1" to "2元券", "2" to "4元券", "3" to "6元券").forEach { (type, label) ->
+                                FilterChip(
+                                    selected = uiState.currentAwardType == type,
+                                    onClick = { viewModel.switchAwardType(type) },
+                                    label = { Text(label) },
+                                    modifier = Modifier.weight(1f)
+                                )
+                            }
+                        }
+
+                        val ticketResp = uiState.tickets
+                        if (ticketResp != null && ticketResp.result == "0") {
+                            Text("2元券: ${ticketResp.twoYuan ?: ticketResp.num_2 ?: "0"}  4元券: ${ticketResp.fourYuan ?: ticketResp.num_4 ?: "0"}  6元券: ${ticketResp.sixYuan ?: ticketResp.num_6 ?: "0"}")
+                            Text("总获得: ${ticketResp.total ?: "0"}  已使用: ${ticketResp.used ?: "0"}  已过期: ${ticketResp.expire ?: "0"}")
                             Divider()
-                            Text("总获得: ${tickets.total ?: "0"}")
-                            Text("已使用: ${tickets.used ?: "0"}")
-                            Text("已过期: ${tickets.expire ?: "0"}")
-                            Text("2元券: ${tickets.twoYuan ?: "0"}")
-                            Text("4元券: ${tickets.fourYuan ?: "0"}")
-                            Text("6元券: ${tickets.sixYuan ?: "0"}")
+
+                            val records = ticketResp.recordList
+                            if (!records.isNullOrEmpty()) {
+                                records.forEach { record ->
+                                    Card(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        colors = CardDefaults.cardColors(
+                                            containerColor = MaterialTheme.colorScheme.surfaceVariant
+                                        )
+                                    ) {
+                                        Column(modifier = Modifier.padding(8.dp)) {
+                                            Text("券名称: ${record.exchange_name ?: record.award_name ?: record.award_type ?: "-"}", style = MaterialTheme.typography.bodySmall)
+                                            Text("领取时间: ${record.create_time ?: "-"}", style = MaterialTheme.typography.bodySmall)
+                                            if (record.expire_time != null) {
+                                                Text("过期时间: ${record.expire_time}", style = MaterialTheme.typography.bodySmall)
+                                            }
+                                            Text("状态: ${if (record.use_state == "1") "未使用" else if (record.use_state == "2") "已使用" else record.use_state ?: "-"}", style = MaterialTheme.typography.bodySmall)
+                                        }
+                                    }
+                                }
+                            } else {
+                                Text("暂无优惠券记录", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            }
                         }
                     }
                 }

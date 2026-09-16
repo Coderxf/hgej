@@ -105,9 +105,9 @@ class LoginViewModel(application: Application) : AndroidViewModel(application) {
                 )
                 result.onSuccess { loginResp ->
                     prefsManager.saveLoginInfo(
-                        loginResp.login_name ?: state.phone,
+                        if (loginResp.login_name.isNullOrBlank()) state.phone else loginResp.login_name,
                         loginResp.ses_id ?: "",
-                        loginResp.user_id ?: state.phone
+                        if (loginResp.user_id.isNullOrBlank()) state.phone else loginResp.user_id
                     )
                     _uiState.value = _uiState.value.copy(
                         isLoading = false,
@@ -143,9 +143,9 @@ class LoginViewModel(application: Application) : AndroidViewModel(application) {
                     val result = authRepository.smsLogin(state.phone, state.smsCode)
                     result.onSuccess { loginResp ->
                         prefsManager.saveLoginInfo(
-                            loginResp.login_name ?: state.phone,
+                            if (loginResp.login_name.isNullOrBlank()) state.phone else loginResp.login_name,
                             loginResp.ses_id ?: "",
-                            loginResp.user_id ?: state.phone
+                            if (loginResp.user_id.isNullOrBlank()) state.phone else loginResp.user_id
                         )
                         _uiState.value = _uiState.value.copy(
                             isLoading = false,
@@ -166,10 +166,7 @@ class LoginViewModel(application: Application) : AndroidViewModel(application) {
         viewModelScope.launch {
             for (i in 60 downTo 0) {
                 _uiState.value = _uiState.value.copy(countdown = i)
-                if (i == 0) {
-                    _uiState.value = _uiState.value.copy(smsSent = false)
-                    break
-                }
+                if (i == 0) break
                 kotlinx.coroutines.delay(1000)
             }
         }

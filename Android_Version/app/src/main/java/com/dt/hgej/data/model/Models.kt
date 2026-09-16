@@ -1,5 +1,7 @@
 package com.dt.hgej.data.model
 
+import com.google.gson.annotations.SerializedName
+
 data class CaptchaResponse(
     val result: String? = null,
     val msg: String? = null,
@@ -75,23 +77,35 @@ data class QrCodeResponse(
 data class SubwayTicketResponse(
     val result: String? = null,
     val msg: String? = null,
-    val data: SubwayTicketData? = null
-)
-
-data class SubwayTicketData(
     val total: String? = null,
     val used: String? = null,
     val expire: String? = null,
     val twoYuan: String? = null,
     val fourYuan: String? = null,
     val sixYuan: String? = null,
-    val recordList: List<TicketRecord>? = null
+    val num_2: String? = null,
+    val num_4: String? = null,
+    val num_6: String? = null,
+    @SerializedName("list") val recordList: List<TicketRecord>? = null
 )
 
 data class TicketRecord(
     val award_name: String? = null,
     val use_state: String? = null,
-    val create_time: String? = null
+    val create_time: String? = null,
+    val expire_time: String? = null,
+    val exchange_name: String? = null,
+    val award_type: String? = null
+)
+
+data class UserInfoResponse(
+    val result: String? = null,
+    val msg: String? = null,
+    val name: String? = null,
+    val sensitive_name: String? = null,
+    val remain_integral: String? = null,
+    val total_integral: String? = null,
+    val integral: String? = null
 )
 
 data class ApiResponse(

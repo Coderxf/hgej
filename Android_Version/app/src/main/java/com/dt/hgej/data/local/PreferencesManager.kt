@@ -66,6 +66,12 @@ class PreferencesManager(private val context: Context) {
 
     suspend fun getConfig(): UserConfig = userConfig.first()
 
+    suspend fun setLoggedIn(value: Boolean) {
+        context.dataStore.edit { prefs ->
+            prefs[IS_LOGGED_IN] = value
+        }
+    }
+
     suspend fun logout() {
         context.dataStore.edit { prefs ->
             prefs[LOGIN_NAME] = ""

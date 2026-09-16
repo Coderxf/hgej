@@ -6,6 +6,7 @@ import androidx.lifecycle.viewModelScope
 import com.dt.hgej.data.api.ApiService
 import com.dt.hgej.data.local.PreferencesManager
 import com.dt.hgej.data.model.UserConfig
+import com.dt.hgej.data.model.UserInfoResponse
 import com.dt.hgej.repository.QrRepository
 import com.dt.hgej.repository.TaskRepository
 import com.dt.hgej.service.ExchangeScheduler
@@ -13,11 +14,14 @@ import com.dt.hgej.util.Utils
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 
 data class MainUiState(
     val config: UserConfig = UserConfig(),
     val isLoggedIn: Boolean = false,
+    val userName: String = "",
+    val remainIntegral: Int = 0,
     val logs: List<String> = emptyList(),
     val schedulerRunning: Boolean = false,
     val isDoingDailyTask: Boolean = false
@@ -44,17 +48,50 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         viewModelScope.launch {
             prefsManager.userConfig.collect { config ->
                 _uiState.value = _uiState.value.copy(config = config)
-                if (config.runTime.isBlank()) {
-                    autoFillRunTime()
-                }
             }
         }
         viewModelScope.launch {
             prefsManager.isLoggedIn.collect { loggedIn ->
                 _uiState.value = _uiState.value.copy(isLoggedIn = loggedIn)
+                if (loggedIn) {
+                    val config = prefsManager.getConfig()
+                    _uiState.value = _uiState.value.copy(config = config)
+                    queryUserInfo(config)
+                }
+            }
+        }
+        viewModelScope.launch {
+            val config = prefsManager.getConfig()
+            val loggedIn = prefsManager.isLoggedIn.first()
+            autoFillRunTime()
+            if (!loggedIn && config.loginName.isNotBlank() && config.sesId.isNotBlank()) {
+                prefsManager.setLoggedIn(true)
+                addLog("检测到已有凭证，自动登录")
             }
         }
         addLog("程序已启动")
+    }
+
+    private suspend fun queryUserInfo(config: UserConfig? = null) {
+        val cfg = config ?: _uiState.value.config
+        if (cfg.loginName.isBlank() || cfg.sesId.isBlank()) return
+        val info = apiService.getUserInfo(cfg.loginName, cfg.sesId)
+        if (info != null && info.result == "0") {
+            val name = info.name ?: info.sensitive_name ?: ""
+            val integral = info.remain_integral?.toIntOrNull() ?: 0
+            _uiState.value = _uiState.value.copy(userName = name, remainIntegral = integral)
+            if (name.isNotBlank()) {
+                if (integral > 0) {
+                    addLog("当前用户: $name  积分: $integral")
+                } else {
+                    addLog("当前用户: $name")
+                }
+            }
+        } else {
+            _uiState.value = _uiState.value.copy(isLoggedIn = false, userName = "", remainIntegral = 0)
+            addLog("登录会话已失效，请重新登录")
+            prefsManager.setLoggedIn(false)
+        }
     }
 
     fun autoFillRunTime() {
@@ -62,6 +99,18 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         val newConfig = _uiState.value.config.copy(runTime = nextTime)
         updateConfig(newConfig)
         addLog("自动填入执行时间: $nextTime")
+    }
+
+    fun applyManualCredentials() {
+        val config = _uiState.value.config
+        if (config.loginName.isBlank() || config.sesId.isBlank()) {
+            addLog("请先填写 login_name 和 ses_id")
+            return
+        }
+        viewModelScope.launch {
+            prefsManager.setLoggedIn(true)
+            addLog("应用配置凭证成功")
+        }
     }
 
     fun updateConfig(config: UserConfig) {
@@ -115,7 +164,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             return
         }
         viewModelScope.launch {
-            val result = qrRepository.getGreenTravelCode(config.userId, config.sesId)
+            val result = qrRepository.getGreenTravelCode(config.loginName, config.sesId)
             result.onSuccess {
                 addLog("乘车码获取成功")
             }.onFailure {
@@ -131,7 +180,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             _uiState.value = _uiState.value.copy(
                 schedulerRunning = false,
                 isDoingDailyTask = false,
-                config = UserConfig()
+                config = UserConfig(),
+                remainIntegral = 0
             )
         }
         addLog("已退出登录")

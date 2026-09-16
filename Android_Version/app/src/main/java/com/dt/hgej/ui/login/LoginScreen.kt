@@ -165,19 +165,26 @@ fun LoginScreen(
                     Text(
                         when {
                             !uiState.isPasswordMode && !uiState.smsSent -> "发送验证码"
-                            !uiState.isPasswordMode && uiState.smsSent -> {
-                                if (uiState.countdown > 0) "重新发送(${uiState.countdown}s)"
-                                else "登录"
-                            }
+                            !uiState.isPasswordMode && uiState.smsSent -> "登录"
                             else -> "登录"
                         }
                     )
                 }
             }
 
+            if (!uiState.isPasswordMode && uiState.smsSent && uiState.countdown > 0) {
+                Text(
+                    text = "${uiState.countdown}s 后可重新发送",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.fillMaxWidth(),
+                    textAlign = androidx.compose.ui.text.style.TextAlign.Center
+                )
+            }
+
             Spacer(Modifier.height(16.dp))
             Text(
-                text = "提示：可在 config.json 中填写已有 ses_id 跳过登录",
+                text = "提示：返回首页填入 login_name 和 ses_id 即可跳过登录",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )

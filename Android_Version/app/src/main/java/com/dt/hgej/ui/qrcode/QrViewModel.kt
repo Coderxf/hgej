@@ -17,6 +17,7 @@ data class QrUiState(
     val isLoading: Boolean = false,
     val qrCode: QrCodeResponse? = null,
     val tickets: SubwayTicketResponse? = null,
+    val currentAwardType: String = "1",
     val error: String? = null
 )
 
@@ -38,19 +39,32 @@ class QrViewModel(application: Application) : AndroidViewModel(application) {
             _uiState.value = QrUiState(isLoading = true)
             val config = prefsManager.getConfig()
 
-            if (config.userId.isBlank() || config.sesId.isBlank()) {
+            if (config.loginName.isBlank() || config.sesId.isBlank()) {
                 _uiState.value = QrUiState(isLoading = false, error = "请先登录")
                 return@launch
             }
 
-            val qrResult = qrRepository.getGreenTravelCode(config.userId, config.sesId)
-            val ticketResult = qrRepository.getSubwayTickets(config.loginName, config.sesId)
+            val qrResult = qrRepository.getGreenTravelCode(config.loginName, config.sesId)
+            val ticketResult = qrRepository.getSubwayTickets(config.loginName, config.sesId, _uiState.value.currentAwardType)
 
             _uiState.value = QrUiState(
                 isLoading = false,
                 qrCode = qrResult.getOrNull(),
                 tickets = ticketResult.getOrNull(),
+                currentAwardType = _uiState.value.currentAwardType,
                 error = if (qrResult.isFailure) qrResult.exceptionOrNull()?.message else null
+            )
+        }
+    }
+
+    fun switchAwardType(awardType: String) {
+        if (_uiState.value.currentAwardType == awardType) return
+        _uiState.value = _uiState.value.copy(currentAwardType = awardType)
+        viewModelScope.launch {
+            val config = prefsManager.getConfig()
+            val result = qrRepository.getSubwayTickets(config.loginName, config.sesId, awardType)
+            _uiState.value = _uiState.value.copy(
+                tickets = result.getOrNull()
             )
         }
     }

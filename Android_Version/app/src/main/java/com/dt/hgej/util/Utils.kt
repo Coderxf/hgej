@@ -20,6 +20,17 @@ object Utils {
         } catch (e: Exception) { null }
     }
 
+    fun formatTimestamp(timestamp: String?): String {
+        if (timestamp.isNullOrEmpty()) return "未知"
+        return try {
+            val ts = timestamp.toLong()
+            val sdf = SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.getDefault())
+            sdf.format(Date(ts * 1000))
+        } catch (e: Exception) {
+            timestamp
+        }
+    }
+
     fun getNextRunTime(): String {
         val sdf = SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.getDefault())
         val now = Calendar.getInstance()
