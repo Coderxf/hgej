@@ -5,6 +5,9 @@
       <image class="hero-image" src="../../resouse/login.jpg" mode="widthFix" />
     </view>
 
+    <!-- 免责声明 -->
+    <view class="disclaimer">仅供学习使用</view>
+
     <view class="card">
       <view class="title">e家登录</view>
 
@@ -77,7 +80,21 @@
       <button class="btn btn-primary" @click="submitLogin" :disabled="submitting">
         {{ submitting ? '登录中...' : '登录' }}
       </button>
+
+      <!-- 用户协议与隐私政策 -->
+      <view class="agreement-row">
+        <checkbox-group @change="onAgreementChange">
+          <checkbox :checked="agreed" value="1" />
+        </checkbox-group>
+        <view class="agreement-text">
+          <text>我已阅读并同意</text>
+          <text class="link" @click="openAgreement('user')">《用户服务协议》</text>
+          <text>和</text>
+          <text class="link" @click="openAgreement('privacy')">《隐私政策》</text>
+        </view>
+      </view>
     </view>
+
   </view>
 </template>
 
@@ -113,8 +130,20 @@ const sendingSms = ref(false)
 const smsCountdown = ref(0)
 /** 倒计时定时器句柄 */
 let countdownTimer = null
+/** 是否已同意用户协议与隐私政策 */
+const agreed = ref(false)
 
 // ==================== 方法 ====================
+/** 协议勾选状态变化 */
+function onAgreementChange(e) {
+  agreed.value = e.detail.value.includes('1')
+}
+
+/** 打开协议/隐私政策页面 */
+function openAgreement(type) {
+  uni.navigateTo({ url: `/pages/agreement/agreement?type=${type}` })
+}
+
 /**
  * 初始化页面：检查本地是否有有效登录态，有则直接跳转主页，否则加载验证码
  */
@@ -227,6 +256,30 @@ async function handleSendSms() {
  * 登录成功后将 loginName / userId / sesId 保存到本地存储，然后跳转主页
  */
 async function submitLogin() {
+  // 测试账号: admin/admin 直接跳过登录
+  if (loginMode.value === 'password' && phone.value.trim() === 'admin' && password.value === 'admin') {
+    if (!agreed.value) {
+      uni.showToast({ title: '请先同意用户服务协议和隐私政策', icon: 'none' })
+      return
+    }
+    saveAuth({
+      isLoggedIn: true,
+      loginName: 'admin',
+      userId: 'admin',
+      sesId: 'test_ses_id'
+    })
+    uni.showToast({ title: '测试登录成功', icon: 'success' })
+    setTimeout(() => {
+      uni.redirectTo({ url: '/pages/main/main' })
+    }, 300)
+    return
+  }
+
+  if (!agreed.value) {
+    uni.showToast({ title: '请先同意用户服务协议和隐私政策', icon: 'none' })
+    return
+  }
+
   if (!phone.value) {
     uni.showToast({ title: '请输入手机号', icon: 'none' })
     return
@@ -463,5 +516,29 @@ onLoad(() => {
 
 .btn-sms[disabled] {
   color: #c0c0c0;
+}
+
+.disclaimer {
+  text-align: center;
+  margin-bottom: 20rpx;
+  font-size: 28rpx;
+  color: #999;
+}
+
+.agreement-row {
+  display: flex;
+  align-items: flex-start;
+  margin-top: 20rpx;
+}
+
+.agreement-text {
+  font-size: 24rpx;
+  color: #6e6e73;
+  line-height: 1.5;
+  margin-left: 8rpx;
+}
+
+.link {
+  color: #007aff;
 }
 </style>
