@@ -4,6 +4,7 @@ import android.app.Activity
 import android.content.ContentValues
 import android.content.Context
 import android.graphics.Bitmap
+import android.graphics.Canvas
 import android.media.MediaScannerConnection
 import android.os.Build
 import android.os.Environment
@@ -12,7 +13,7 @@ import android.os.Looper
 import android.provider.MediaStore
 import android.view.PixelCopy
 import android.view.Window
-import androidx.core.graphics.drawToBitmap
+
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.withContext
@@ -52,7 +53,9 @@ object ScreenCapture {
             bitmap
         } else {
             try {
-                decorView.drawToBitmap()
+                val fallback = Bitmap.createBitmap(decorView.width, decorView.height, Bitmap.Config.ARGB_8888)
+                decorView.draw(Canvas(fallback))
+                fallback
             } catch (e: Exception) {
                 null
             }

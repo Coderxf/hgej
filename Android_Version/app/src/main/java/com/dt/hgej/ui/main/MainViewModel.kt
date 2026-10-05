@@ -2,6 +2,9 @@ package com.dt.hgej.ui.main
 
 import android.app.Application
 import androidx.lifecycle.AndroidViewModel
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.ProcessLifecycleOwner
 import androidx.lifecycle.viewModelScope
 import com.dt.hgej.data.api.ApiService
 import com.dt.hgej.data.local.PreferencesManager
@@ -20,6 +23,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
+import java.io.File
 
 data class MainUiState(
     val config: UserConfig = UserConfig(),
@@ -29,7 +33,9 @@ data class MainUiState(
     val logs: List<String> = emptyList(),
     val schedulerRunning: Boolean = false,
     val isDoingDailyTask: Boolean = false,
-    val updateInfo: UpdateInfo? = null
+    val updateInfo: UpdateInfo? = null,
+    val isDownloading: Boolean = false,
+    val downloadProgress: Int = 0
 )
 
 class MainViewModel(application: Application) : AndroidViewModel(application) {
@@ -49,7 +55,20 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     private val _uiState = MutableStateFlow(MainUiState())
     val uiState: StateFlow<MainUiState> = _uiState.asStateFlow()
 
+    private var pendingApkFile: File? = null
+
     init {
+        ProcessLifecycleOwner.get().lifecycle.addObserver(LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_START) {
+                pendingApkFile?.let { file ->
+                    if (file.exists()) {
+                        file.delete()
+                        addLog("已清理更新缓存")
+                    }
+                    pendingApkFile = null
+                }
+            }
+        })
         viewModelScope.launch {
             prefsManager.userConfig.collect { config ->
                 _uiState.value = _uiState.value.copy(config = config)
@@ -92,7 +111,36 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun dismissUpdate() {
-        _uiState.value = _uiState.value.copy(updateInfo = null)
+        _uiState.value = _uiState.value.copy(updateInfo = null, isDownloading = false, downloadProgress = 0)
+    }
+
+    fun downloadAndInstall() {
+        val info = _uiState.value.updateInfo ?: return
+        val url = info.downloadUrl ?: return
+
+        if (!UpdateManager.canRequestPackageInstalls(getApplication())) {
+            UpdateManager.startInstallPermissionSetting(getApplication())
+            addLog("请先允许安装未知来源应用")
+            return
+        }
+
+        _uiState.value = _uiState.value.copy(isDownloading = true, downloadProgress = 0)
+        addLog("开始下载新版本...")
+
+        viewModelScope.launch {
+            val file = UpdateManager.downloadApk(url, getApplication()) { progress ->
+                _uiState.value = _uiState.value.copy(downloadProgress = progress)
+            }
+            if (file != null) {
+                addLog("下载完成，准备安装")
+                _uiState.value = _uiState.value.copy(isDownloading = false, downloadProgress = 100)
+                pendingApkFile = file
+                UpdateManager.installApk(getApplication(), file)
+            } else {
+                addLog("下载失败，请检查网络后重试")
+                _uiState.value = _uiState.value.copy(isDownloading = false, downloadProgress = 0)
+            }
+        }
     }
 
     private suspend fun queryUserInfo(config: UserConfig? = null) {

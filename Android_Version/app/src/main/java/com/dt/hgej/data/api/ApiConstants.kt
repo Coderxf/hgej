@@ -24,5 +24,5 @@ object ApiConstants {
     // ========== 应用更新检查 ==========
     // 阿里云服务器上 update.json 的完整地址，返回格式见 docs/更新检查配置.md
     // TODO: 部署后替换为你自己的服务器地址
-    const val UPDATE_CHECK_URL = "http://your-aliyun-server.com/update/app_update.json"
+    const val UPDATE_CHECK_URL = "https://777713.xyz/update/app_update.json"
 }

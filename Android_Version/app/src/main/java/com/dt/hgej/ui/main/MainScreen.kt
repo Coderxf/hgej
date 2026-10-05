@@ -2,6 +2,7 @@ package com.dt.hgej.ui.main
 
 import android.content.Intent
 import android.net.Uri
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -123,19 +124,20 @@ fun MainScreen(
                 horizontalArrangement = Arrangement.spacedBy(8.dp)
             ) {
                 if (uiState.schedulerRunning) {
-                    Button(
+                    OutlinedButton(
                         onClick = { viewModel.stopExchange() },
-                        colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error),
-                        modifier = Modifier.weight(1f)
+                        colors = ButtonDefaults.outlinedButtonColors(contentColor = MaterialTheme.colorScheme.error),
+                        border = BorderStroke(1.dp, MaterialTheme.colorScheme.error),
+                        modifier = Modifier.weight(1f).height(36.dp)
                     ) {
                         Icon(Icons.Filled.Stop, contentDescription = null, modifier = Modifier.size(16.dp))
                         Spacer(Modifier.width(4.dp))
                         Text("停止")
                     }
                 } else {
-                    Button(
+                    OutlinedButton(
                         onClick = { viewModel.startExchange() },
-                        modifier = Modifier.weight(1f)
+                        modifier = Modifier.weight(1f).height(36.dp)
                     ) {
                         Icon(Icons.Filled.PlayArrow, contentDescription = null, modifier = Modifier.size(16.dp))
                         Spacer(Modifier.width(4.dp))
@@ -146,7 +148,7 @@ fun MainScreen(
                 OutlinedButton(
                     onClick = { viewModel.doDailyTask() },
                     enabled = !uiState.isDoingDailyTask && uiState.isLoggedIn,
-                    modifier = Modifier.weight(1f)
+                    modifier = Modifier.weight(1f).height(36.dp)
                 ) {
                     Text("每日任务")
                 }
@@ -154,7 +156,7 @@ fun MainScreen(
                 OutlinedButton(
                     onClick = onNavigateToQr,
                     enabled = uiState.isLoggedIn,
-                    modifier = Modifier.weight(1f)
+                    modifier = Modifier.weight(1f).height(36.dp)
                 ) {
                     Text("乘车码")
                 }
@@ -205,31 +207,32 @@ fun MainScreen(
 
     uiState.updateInfo?.let { info ->
         AlertDialog(
-            onDismissRequest = { if (!info.forceUpdate) viewModel.dismissUpdate() },
+            onDismissRequest = { if (!info.forceUpdate && !uiState.isDownloading) viewModel.dismissUpdate() },
             title = { Text("发现新版本 v${info.versionName ?: info.versionCode}") },
             text = {
-                Text(info.changelog?.takeIf { it.isNotBlank() } ?: "修复已知问题，优化使用体验")
+                if (uiState.isDownloading) {
+                    Column {
+                        Text("正在下载... ${uiState.downloadProgress}%")
+                        Spacer(Modifier.height(8.dp))
+                        LinearProgressIndicator(
+                            progress = uiState.downloadProgress / 100f,
+                            modifier = Modifier.fillMaxWidth()
+                        )
+                    }
+                } else {
+                    Text(info.changelog?.takeIf { it.isNotBlank() } ?: "修复已知问题，优化使用体验")
+                }
             },
             confirmButton = {
                 TextButton(
-                    onClick = {
-                        info.downloadUrl?.takeIf { it.isNotBlank() }?.let { url ->
-                            try {
-                                context.startActivity(
-                                    Intent(Intent.ACTION_VIEW, Uri.parse(url))
-                                        .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                                )
-                            } catch (_: Exception) {
-                            }
-                        }
-                        if (!info.forceUpdate) viewModel.dismissUpdate()
-                    }
+                    onClick = { viewModel.downloadAndInstall() },
+                    enabled = !uiState.isDownloading
                 ) {
-                    Text("立即更新")
+                    Text(if (uiState.isDownloading) "下载中..." else "立即更新")
                 }
             },
             dismissButton = {
-                if (!info.forceUpdate) {
+                if (!info.forceUpdate && !uiState.isDownloading) {
                     TextButton(onClick = { viewModel.dismissUpdate() }) {
                         Text("稍后再说")
                     }
