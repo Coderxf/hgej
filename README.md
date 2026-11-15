@@ -27,10 +27,46 @@
   - [Python 版本](#python-版本)
   - [JavaScript 版本](#javascript-版本)
   - [微信小程序](#微信小程序)
+- [衍生版本（本仓库扩展）](#衍生版本本仓库扩展)
+  - [Android 版](#android-版本)
+  - [Web 网页版](#web-网页版)
+  - [服务器脚本](#服务器脚本)
 - [项目结构](#-项目结构)
 - [技术栈](#-技术栈)
 - [更新日志](#-更新日志)
 - [免责声明](#-免责声明)
+
+---
+
+## 🧩 衍生版本（本仓库扩展）
+
+在上游三个形态基础上，本仓库新增了以下版本与工具：
+
+### Android 版
+
+原生 Kotlin + Jetpack Compose 应用，功能覆盖登录（密码/短信）、每日任务、
+抢票（服务器时间校准卡点）、乘车码与地铁券查询、应用内自更新。
+
+- 源码：[Android_Version/](./Android_Version/)
+- 打包：`Android_Version/build-apk.sh [debug|release]`，一键发版 `./release.sh`
+- 更新检查配置：[Android_Version/docs/更新检查配置.md](./Android_Version/docs/更新检查配置.md)
+- 当前版本以下载页 https://777713.xyz/update/app_update.json 为准
+
+### Web 网页版
+
+响应式单页应用 + Flask 薄后端（杭工接口代理与加解密），多静态口令授权
+（每人一个口令、删行即吊销），抢票循环在浏览器执行。
+
+- 源码与部署文档：[Web_Version/](./Web_Version/)（部署含 systemd / Nginx 全流程）
+- 前端零构建；桌面浏览器设备指纹从 30 款已核实真机池随机分配
+
+### 服务器脚本
+
+阿里云服务器上的定时任务形态，收纳入库并修复多项问题（UA 真机化、
+版本号统一、TLS 校验恢复、凭据不入日志等）：
+
+- 源码与部署说明：[Server_Scripts/](./Server_Scripts/)
+- `daily_task.py`（每日签到）、`grab_ticket.py`（定时抢票，服务器时间校准）
 
 ---
 
