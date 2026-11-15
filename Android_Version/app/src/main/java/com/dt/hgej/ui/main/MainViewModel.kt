@@ -69,11 +69,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 }
             }
         })
-        viewModelScope.launch {
-            prefsManager.userConfig.collect { config ->
-                _uiState.value = _uiState.value.copy(config = config)
-            }
-        }
+        // 配置不监听 DataStore 回显：防抖落盘后回发的旧值会覆盖用户正在输入的新值；
+        // 登录后的配置刷新由下方 isLoggedIn 收集器负责
         viewModelScope.launch {
             prefsManager.isLoggedIn.collect { loggedIn ->
                 _uiState.value = _uiState.value.copy(isLoggedIn = loggedIn)
@@ -152,7 +149,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             addLog("获取用户信息失败: ${e.message}")
             null
         } ?: return
-        if (info != null && info.result == "0") {
+        if (info.result == "0") {
             val name = info.name ?: info.sensitive_name ?: ""
             val integral = info.remain_integral?.toIntOrNull() ?: 0
             _uiState.value = _uiState.value.copy(userName = name, remainIntegral = integral)
@@ -270,6 +267,13 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     fun clearLogs() {
         _uiState.value = _uiState.value.copy(logs = emptyList())
+    }
+
+    override fun onCleared() {
+        // 兑换任务运行在独立协程作用域，退出页面时必须显式停止，
+        // 否则任务会在 ViewModel 销毁后继续发请求
+        scheduler.stop()
+        super.onCleared()
     }
 
     private fun addLog(msg: String) {

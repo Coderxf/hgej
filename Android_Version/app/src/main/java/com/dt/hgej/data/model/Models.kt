@@ -74,26 +74,32 @@ data class QrCodeResponse(
     val qrcodeImage: String? = null
 )
 
+// 字段名对照 OL83 真实响应（见 思路.md 抓包样本）：
+// use_num=已使用数，expire_num=已过期数，num_2/4/6=各面额当前可用数，无单独"总获得"字段
 data class SubwayTicketResponse(
     val result: String? = null,
     val msg: String? = null,
-    val total: String? = null,
-    val used: String? = null,
-    val expire: String? = null,
-    val twoYuan: String? = null,
-    val fourYuan: String? = null,
-    val sixYuan: String? = null,
+    val use_num: String? = null,
+    val expire_num: String? = null,
     val num_2: String? = null,
     val num_4: String? = null,
     val num_6: String? = null,
+    val total_count: Int? = null,
+    val rec_num: String? = null,
     @SerializedName("list") val recordList: List<TicketRecord>? = null
-)
+) {
+    /** 总获得 = 已使用 + 已过期 + 当前可用三类之和 */
+    val totalObtained: Int
+        get() = listOf(use_num, expire_num, num_2, num_4, num_6).sumOf { it?.toIntOrNull() ?: 0 }
+}
 
 data class TicketRecord(
     val award_name: String? = null,
     val use_state: String? = null,
+    val use_state_name: String? = null,
     val create_time: String? = null,
     val expire_time: String? = null,
+    val use_time: String? = null,
     val exchange_name: String? = null,
     val award_type: String? = null
 )
@@ -121,7 +127,7 @@ data class UserConfig(
     val exchangeId: String = "10",
     val runTime: String = "",
     val runCount: String = "100",
-    val timeSleep: String = "0.08"
+    val timeSleep: String = "0.2"
 )
 
 data class UpdateInfo(

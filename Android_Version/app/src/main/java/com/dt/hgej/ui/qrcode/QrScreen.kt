@@ -195,8 +195,8 @@ fun QrScreen(
 
                         val ticketResp = uiState.tickets
                         if (ticketResp != null && ticketResp.result == "0") {
-                            Text("2元券: ${ticketResp.twoYuan ?: ticketResp.num_2 ?: "0"}  4元券: ${ticketResp.fourYuan ?: ticketResp.num_4 ?: "0"}  6元券: ${ticketResp.sixYuan ?: ticketResp.num_6 ?: "0"}")
-                            Text("总获得: ${ticketResp.total ?: "0"}  已使用: ${ticketResp.used ?: "0"}  已过期: ${ticketResp.expire ?: "0"}")
+                            Text("2元券: ${ticketResp.num_2 ?: "0"}  4元券: ${ticketResp.num_4 ?: "0"}  6元券: ${ticketResp.num_6 ?: "0"}")
+                            Text("总获得: ${ticketResp.totalObtained}  已使用: ${ticketResp.use_num ?: "0"}  已过期: ${ticketResp.expire_num ?: "0"}")
                             Divider()
 
                             val records = ticketResp.recordList
@@ -214,7 +214,7 @@ fun QrScreen(
                                             if (record.expire_time != null) {
                                                 Text("过期时间: ${record.expire_time}", style = MaterialTheme.typography.bodySmall)
                                             }
-                                            Text("状态: ${if (record.use_state == "1") "未使用" else if (record.use_state == "2") "已使用" else record.use_state ?: "-"}", style = MaterialTheme.typography.bodySmall)
+                                            Text("状态: ${record.use_state_name ?: if (record.use_state == "1") "未使用" else if (record.use_state == "2") "已使用" else record.use_state ?: "-"}", style = MaterialTheme.typography.bodySmall)
                                         }
                                     }
                                 }

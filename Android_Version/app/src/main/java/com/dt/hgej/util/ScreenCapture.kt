@@ -12,8 +12,8 @@ import android.os.Handler
 import android.os.Looper
 import android.provider.MediaStore
 import android.view.PixelCopy
+import android.view.View
 import android.view.Window
-
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.withContext
@@ -52,14 +52,17 @@ object ScreenCapture {
         if (pixelCopyOk) {
             bitmap
         } else {
-            try {
-                val fallback = Bitmap.createBitmap(decorView.width, decorView.height, Bitmap.Config.ARGB_8888)
-                decorView.draw(Canvas(fallback))
-                fallback
-            } catch (e: Exception) {
-                null
-            }
+            drawToSoftwareBitmap(decorView)
         }
+    }
+
+    /** PixelCopy 失败时的回退：软件画布重绘视图 */
+    private fun drawToSoftwareBitmap(view: View): Bitmap? = try {
+        val bitmap = Bitmap.createBitmap(view.width, view.height, Bitmap.Config.ARGB_8888)
+        view.draw(Canvas(bitmap))
+        bitmap
+    } catch (e: Exception) {
+        null
     }
 
     /**
