@@ -3,6 +3,7 @@ package com.dt.hgej.ui.main
 import android.content.Intent
 import android.net.Uri
 import androidx.compose.foundation.BorderStroke
+import android.widget.Toast
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -10,8 +11,7 @@ import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AccessTime
-import androidx.compose.material.icons.filled.Clear
-import androidx.compose.material.icons.filled.ContentPaste
+import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Stop
@@ -22,8 +22,10 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.platform.ClipboardManager
 import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.dt.hgej.data.model.UserConfig
@@ -256,19 +258,12 @@ fun ConfigForm(
             label = { Text("LOGIN_NAME") },
             singleLine = true,
             modifier = Modifier.fillMaxWidth(),
-            textStyle = MaterialTheme.typography.bodySmall,
-            trailingIcon = {
-                Row {
-                    IconButton(onClick = { onConfigChange(config.copy(loginName = "")) }) {
-                        Icon(Icons.Filled.Clear, contentDescription = "清除", modifier = Modifier.size(18.dp))
-                    }
-                    IconButton(onClick = {
-                        clipboardManager.getText()?.text?.let { onConfigChange(config.copy(loginName = it)) }
-                    }) {
-                        Icon(Icons.Filled.ContentPaste, contentDescription = "粘贴", modifier = Modifier.size(18.dp))
-                    }
-                }
-            }
+            textStyle = MaterialTheme.typography.bodySmall
+        )
+        CredentialActions(
+            value = config.loginName,
+            onValueChange = { onConfigChange(config.copy(loginName = it)) },
+            clipboardManager = clipboardManager
         )
         OutlinedTextField(
             value = config.sesId,
@@ -276,19 +271,12 @@ fun ConfigForm(
             label = { Text("SES_ID") },
             singleLine = true,
             modifier = Modifier.fillMaxWidth(),
-            textStyle = MaterialTheme.typography.bodySmall,
-            trailingIcon = {
-                Row {
-                    IconButton(onClick = { onConfigChange(config.copy(sesId = "")) }) {
-                        Icon(Icons.Filled.Clear, contentDescription = "清除", modifier = Modifier.size(18.dp))
-                    }
-                    IconButton(onClick = {
-                        clipboardManager.getText()?.text?.let { onConfigChange(config.copy(sesId = it)) }
-                    }) {
-                        Icon(Icons.Filled.ContentPaste, contentDescription = "粘贴", modifier = Modifier.size(18.dp))
-                    }
-                }
-            }
+            textStyle = MaterialTheme.typography.bodySmall
+        )
+        CredentialActions(
+            value = config.sesId,
+            onValueChange = { onConfigChange(config.copy(sesId = it)) },
+            clipboardManager = clipboardManager
         )
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             OutlinedTextField(
@@ -332,5 +320,44 @@ fun ConfigForm(
                 textStyle = MaterialTheme.typography.bodySmall
             )
         }
+    }
+}
+
+/** 凭证字段下方的 复制/粘贴/删除 三个文本操作按钮（图标语义不直观，改用文本） */
+@Composable
+fun CredentialActions(
+    value: String,
+    onValueChange: (String) -> Unit,
+    clipboardManager: ClipboardManager
+) {
+    val context = LocalContext.current
+    fun toast(msg: String) = Toast.makeText(context, msg, Toast.LENGTH_SHORT).show()
+
+    Row(horizontalArrangement = Arrangement.spacedBy(2.dp)) {
+        TextButton(
+            onClick = {
+                if (value.isBlank()) toast("内容为空")
+                else {
+                    clipboardManager.setText(AnnotatedString(value))
+                    toast("已复制")
+                }
+            },
+            contentPadding = PaddingValues(horizontal = 10.dp, vertical = 0.dp),
+            modifier = Modifier.heightIn(min = 32.dp)
+        ) { Text("复制", style = MaterialTheme.typography.labelMedium) }
+        TextButton(
+            onClick = {
+                val text = clipboardManager.getText()?.text?.trim()
+                if (text.isNullOrEmpty()) toast("剪贴板为空")
+                else onValueChange(text)
+            },
+            contentPadding = PaddingValues(horizontal = 10.dp, vertical = 0.dp),
+            modifier = Modifier.heightIn(min = 32.dp)
+        ) { Text("粘贴", style = MaterialTheme.typography.labelMedium) }
+        TextButton(
+            onClick = { onValueChange("") },
+            contentPadding = PaddingValues(horizontal = 10.dp, vertical = 0.dp),
+            modifier = Modifier.heightIn(min = 32.dp)
+        ) { Text("删除", style = MaterialTheme.typography.labelMedium) }
     }
 }
