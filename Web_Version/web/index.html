@@ -1,0 +1,155 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="referrer" content="no-referrer">
+<title>杭工助手</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<header class="topbar">
+  <span class="brand">杭工助手</span>
+  <span id="userChip" class="user-chip hidden"></span>
+  <nav class="topnav">
+    <button id="navHome" class="nav-btn hidden" type="button">首页</button>
+    <button id="navQr" class="nav-btn hidden" type="button">乘车码</button>
+    <button id="btnLogout" class="nav-btn hidden" type="button">退出</button>
+  </nav>
+</header>
+
+<!-- 1. 站点口令 -->
+<section id="view-unlock" class="view hidden">
+  <div class="card center-card">
+    <h1>杭工助手</h1>
+    <p class="muted">请输入访问口令（由管理员发放）</p>
+    <input id="unlockInput" type="password" placeholder="访问口令" autocomplete="off">
+    <button id="unlockBtn" class="btn primary" type="button">进入</button>
+    <p id="unlockMsg" class="msg error hidden"></p>
+  </div>
+</section>
+
+<!-- 2. 登录 -->
+<section id="view-login" class="view hidden">
+  <div class="card center-card">
+    <h2>杭工e家账号登录</h2>
+    <div class="tabs">
+      <button id="tabPwd" class="tab active" type="button">密码登录</button>
+      <button id="tabSms" class="tab" type="button">短信登录</button>
+      <button id="tabCred" class="tab" type="button">凭证登录</button>
+    </div>
+
+    <input id="loginPhone" type="tel" placeholder="手机号" maxlength="11" autocomplete="username">
+
+    <div id="pwdRow">
+      <input id="loginPwd" type="password" placeholder="密码" autocomplete="current-password">
+    </div>
+
+    <div id="smsRow" class="hidden">
+      <div class="input-row">
+        <input id="smsCode" type="text" placeholder="短信验证码" maxlength="6" inputmode="numeric">
+        <button id="smsResend" class="btn ghost" type="button" disabled>发送验证码</button>
+      </div>
+      <p id="smsCountdown" class="muted small hidden"></p>
+    </div>
+
+    <div id="credRow" class="hidden">
+      <input id="credName" class="mono" type="text" placeholder="LOGIN_NAME" autocomplete="off">
+      <input id="credSes" class="mono" type="text" placeholder="SES_ID" autocomplete="off">
+      <p class="muted small">从安卓/桌面版配置中复制的凭证可直接粘贴，无需验证码</p>
+    </div>
+
+    <img id="captchaImg" class="captcha" alt="图形验证码，点击刷新" title="点击刷新">
+    <input id="captchaCode" type="text" placeholder="图形验证码" maxlength="6" autocomplete="off">
+
+    <button id="loginBtn" class="btn primary" type="button">登录</button>
+    <p id="loginMsg" class="msg error hidden"></p>
+    <p class="muted small">登录使用杭工e家官方接口，仅保存会话到本机浏览器</p>
+  </div>
+</section>
+
+<!-- 3. 主页 -->
+<section id="view-main" class="view hidden">
+  <div class="card">
+    <div class="status-row">
+      <span>登录状态：<b id="stLogin">检查中</b></span>
+      <span id="stName" class="hidden"></span>
+      <span id="stPoints" class="points hidden"></span>
+    </div>
+    <p id="stAccount" class="muted small"></p>
+  </div>
+
+  <div class="card">
+    <h3>每日任务</h3>
+    <p class="muted small">登录签到 ×3 + 评论 + 积分查询，约 8 秒</p>
+    <button id="dailyBtn" class="btn primary" type="button">执行每日任务</button>
+    <div id="dailyLogs" class="logs hidden"></div>
+  </div>
+
+  <div class="card">
+    <h3>抢票（绿色出行券兑换）</h3>
+    <div class="form-row">
+      <label>券种</label>
+      <select id="grabAward">
+        <option value="10" selected>4元券</option>
+        <option value="9">2元券</option>
+        <option value="11">6元券</option>
+      </select>
+    </div>
+    <div class="form-row">
+      <label>执行时间</label>
+      <div class="input-row">
+        <input id="grabTime" type="datetime-local" step="1">
+        <button id="grabAutoTime" class="btn ghost" type="button" title="自动填充最近的 7:00 / 11:30 / 17:00">自动</button>
+      </div>
+    </div>
+    <div class="form-row2">
+      <div>
+        <label>次数 (1~20)</label>
+        <input id="grabCount" type="number" min="1" max="20" value="10">
+      </div>
+      <div>
+        <label>间隔秒 (≥0.15)</label>
+        <input id="grabSleep" type="number" min="0.15" step="0.05" value="0.2">
+      </div>
+    </div>
+    <p class="muted small" id="grabServerTime">服务器时间：未同步</p>
+    <div class="btn-row">
+      <button id="grabStart" class="btn primary" type="button">开始等待并抢票</button>
+      <button id="grabStop" class="btn danger hidden" type="button">停止</button>
+    </div>
+    <div id="grabLogs" class="logs"></div>
+  </div>
+</section>
+
+<!-- 4. 乘车码 -->
+<section id="view-qr" class="view hidden">
+  <div class="card center-card">
+    <h3>绿色出行码</h3>
+    <div id="qrLoading" class="muted">加载中...</div>
+    <img id="qrImg" class="qrcode hidden" alt="乘车码">
+    <div id="qrInfo" class="qr-info hidden">
+      <p>余额: <b id="qrMoney"></b></p>
+      <p>卡号: <span id="qrCard"></span></p>
+      <p>有效期: <span id="qrDead"></span></p>
+    </div>
+    <p id="qrMsg" class="msg error hidden"></p>
+  </div>
+
+  <div class="card">
+    <h3>地铁优惠券</h3>
+    <div class="tabs">
+      <button class="tab award-tab active" data-award="1" type="button">2元券</button>
+      <button class="tab award-tab" data-award="2" type="button">4元券</button>
+      <button class="tab award-tab" data-award="3" type="button">6元券</button>
+    </div>
+    <div id="ticketStats" class="ticket-stats muted">加载中...</div>
+    <div id="ticketRecords" class="records"></div>
+  </div>
+</section>
+
+<footer class="foot muted small">仅供学习交流 · 请合理使用 · 账号风险自担</footer>
+<script src="api.js"></script>
+<script src="app.js"></script>
+</body>
+</html>
