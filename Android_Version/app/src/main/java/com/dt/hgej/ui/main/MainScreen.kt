@@ -4,6 +4,7 @@ import android.content.Intent
 import android.net.Uri
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.shape.RoundedCornerShape
 import android.widget.Toast
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -352,7 +353,17 @@ fun CredentialActions(
     val context = LocalContext.current
     fun toast(msg: String) = Toast.makeText(context, msg, Toast.LENGTH_SHORT).show()
 
-    Row {
+    // TextButton 默认 58dp 最小宽度会把三个按钮撑得很散，
+    // defaultMinSize(minWidth=1.dp) 破掉默认约束后收紧为小药丸按钮
+    val chipModifier = Modifier
+        .height(24.dp)
+        .defaultMinSize(minWidth = 1.dp)
+    val chipColors = ButtonDefaults.textButtonColors(
+        containerColor = MaterialTheme.colorScheme.surfaceVariant,
+        contentColor = MaterialTheme.colorScheme.onSurfaceVariant
+    )
+
+    Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
         TextButton(
             onClick = {
                 if (value.isBlank()) toast("内容为空")
@@ -361,8 +372,10 @@ fun CredentialActions(
                     toast("已复制")
                 }
             },
-            contentPadding = PaddingValues(horizontal = 4.dp),
-            modifier = Modifier.height(26.dp)
+            colors = chipColors,
+            shape = RoundedCornerShape(8.dp),
+            contentPadding = PaddingValues(horizontal = 8.dp, vertical = 0.dp),
+            modifier = chipModifier
         ) { Text("复制", style = MaterialTheme.typography.labelSmall) }
         TextButton(
             onClick = {
@@ -370,13 +383,17 @@ fun CredentialActions(
                 if (text.isNullOrEmpty()) toast("剪贴板为空")
                 else onValueChange(text)
             },
-            contentPadding = PaddingValues(horizontal = 4.dp),
-            modifier = Modifier.height(26.dp)
+            colors = chipColors,
+            shape = RoundedCornerShape(8.dp),
+            contentPadding = PaddingValues(horizontal = 8.dp, vertical = 0.dp),
+            modifier = chipModifier
         ) { Text("粘贴", style = MaterialTheme.typography.labelSmall) }
         TextButton(
             onClick = { onValueChange("") },
-            contentPadding = PaddingValues(horizontal = 4.dp),
-            modifier = Modifier.height(26.dp)
+            colors = chipColors,
+            shape = RoundedCornerShape(8.dp),
+            contentPadding = PaddingValues(horizontal = 8.dp, vertical = 0.dp),
+            modifier = chipModifier
         ) { Text("删除", style = MaterialTheme.typography.labelSmall) }
     }
 }
