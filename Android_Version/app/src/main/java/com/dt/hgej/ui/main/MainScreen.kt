@@ -3,6 +3,7 @@ package com.dt.hgej.ui.main
 import android.content.Intent
 import android.net.Uri
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.clickable
 import android.widget.Toast
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -44,6 +45,8 @@ fun MainScreen(
             context.packageManager.getPackageInfo(context.packageName, 0).versionName ?: ""
         } catch (_: Exception) { "" }
     }
+    // 开发者出口：版本号五连击强制更新（忽略版本号比较，直接装服务器包）
+    var versionTaps by remember { mutableIntStateOf(0) }
 
     Scaffold(
         topBar = {
@@ -55,7 +58,19 @@ fun MainScreen(
                         Text(
                             text = "v$versionName",
                             style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.clickable {
+                                versionTaps++
+                                when {
+                                    versionTaps >= 5 -> {
+                                        versionTaps = 0
+                                        Toast.makeText(context, "触发强制更新", Toast.LENGTH_SHORT).show()
+                                        viewModel.forceCheckUpdate()
+                                    }
+                                    versionTaps >= 3 ->
+                                        Toast.makeText(context, "再点 ${5 - versionTaps} 次强制更新", Toast.LENGTH_SHORT).show()
+                                }
+                            }
                         )
                     }
                 },
@@ -258,12 +273,14 @@ fun ConfigForm(
             label = { Text("LOGIN_NAME") },
             singleLine = true,
             modifier = Modifier.fillMaxWidth(),
-            textStyle = MaterialTheme.typography.bodySmall
-        )
-        CredentialActions(
-            value = config.loginName,
-            onValueChange = { onConfigChange(config.copy(loginName = it)) },
-            clipboardManager = clipboardManager
+            textStyle = MaterialTheme.typography.bodySmall,
+            trailingIcon = {
+                CredentialActions(
+                    value = config.loginName,
+                    onValueChange = { onConfigChange(config.copy(loginName = it)) },
+                    clipboardManager = clipboardManager
+                )
+            }
         )
         OutlinedTextField(
             value = config.sesId,
@@ -271,12 +288,14 @@ fun ConfigForm(
             label = { Text("SES_ID") },
             singleLine = true,
             modifier = Modifier.fillMaxWidth(),
-            textStyle = MaterialTheme.typography.bodySmall
-        )
-        CredentialActions(
-            value = config.sesId,
-            onValueChange = { onConfigChange(config.copy(sesId = it)) },
-            clipboardManager = clipboardManager
+            textStyle = MaterialTheme.typography.bodySmall,
+            trailingIcon = {
+                CredentialActions(
+                    value = config.sesId,
+                    onValueChange = { onConfigChange(config.copy(sesId = it)) },
+                    clipboardManager = clipboardManager
+                )
+            }
         )
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             OutlinedTextField(
@@ -323,7 +342,7 @@ fun ConfigForm(
     }
 }
 
-/** 凭证字段下方的 复制/粘贴/删除 三个文本操作按钮（图标语义不直观，改用文本） */
+/** 凭证字段的 复制/粘贴/删除 紧凑文本按钮，置于输入框尾部同一行 */
 @Composable
 fun CredentialActions(
     value: String,
@@ -333,7 +352,7 @@ fun CredentialActions(
     val context = LocalContext.current
     fun toast(msg: String) = Toast.makeText(context, msg, Toast.LENGTH_SHORT).show()
 
-    Row(horizontalArrangement = Arrangement.spacedBy(2.dp)) {
+    Row {
         TextButton(
             onClick = {
                 if (value.isBlank()) toast("内容为空")
@@ -342,22 +361,22 @@ fun CredentialActions(
                     toast("已复制")
                 }
             },
-            contentPadding = PaddingValues(horizontal = 10.dp, vertical = 0.dp),
-            modifier = Modifier.heightIn(min = 32.dp)
-        ) { Text("复制", style = MaterialTheme.typography.labelMedium) }
+            contentPadding = PaddingValues(horizontal = 4.dp),
+            modifier = Modifier.height(26.dp)
+        ) { Text("复制", style = MaterialTheme.typography.labelSmall) }
         TextButton(
             onClick = {
                 val text = clipboardManager.getText()?.text?.trim()
                 if (text.isNullOrEmpty()) toast("剪贴板为空")
                 else onValueChange(text)
             },
-            contentPadding = PaddingValues(horizontal = 10.dp, vertical = 0.dp),
-            modifier = Modifier.heightIn(min = 32.dp)
-        ) { Text("粘贴", style = MaterialTheme.typography.labelMedium) }
+            contentPadding = PaddingValues(horizontal = 4.dp),
+            modifier = Modifier.height(26.dp)
+        ) { Text("粘贴", style = MaterialTheme.typography.labelSmall) }
         TextButton(
             onClick = { onValueChange("") },
-            contentPadding = PaddingValues(horizontal = 10.dp, vertical = 0.dp),
-            modifier = Modifier.heightIn(min = 32.dp)
-        ) { Text("删除", style = MaterialTheme.typography.labelMedium) }
+            contentPadding = PaddingValues(horizontal = 4.dp),
+            modifier = Modifier.height(26.dp)
+        ) { Text("删除", style = MaterialTheme.typography.labelSmall) }
     }
 }

@@ -111,6 +111,23 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         _uiState.value = _uiState.value.copy(updateInfo = null, isDownloading = false, downloadProgress = 0)
     }
 
+    /**
+     * 强制更新入口（版本号五连击触发）：忽略版本号比较，
+     * 直接拉取服务器包走下载安装流程，供开发者重复安装同一版本测试
+     */
+    fun forceCheckUpdate() {
+        viewModelScope.launch {
+            addLog("强制检查更新（忽略版本号）...")
+            val info = UpdateManager.checkForUpdate(getApplication(), force = true)
+            if (info != null) {
+                _uiState.value = _uiState.value.copy(updateInfo = info)
+                addLog("已获取服务器版本: v${info.versionName ?: info.versionCode}，可在弹窗中下载安装")
+            } else {
+                addLog("强制更新失败：服务器配置不可用")
+            }
+        }
+    }
+
     fun downloadAndInstall() {
         val info = _uiState.value.updateInfo ?: return
         val url = info.downloadUrl ?: return

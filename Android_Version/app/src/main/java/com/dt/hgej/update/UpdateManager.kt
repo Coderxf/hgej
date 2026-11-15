@@ -22,8 +22,9 @@ object UpdateManager {
 
     /**
      * 检查更新：服务器 versionCode 大于本地版本时返回 UpdateInfo，否则返回 null。
+     * force=true 时忽略版本号比较（开发者五连击触发，用于重复安装同一版本测试）。
      */
-    suspend fun checkForUpdate(context: Context): UpdateInfo? = withContext(Dispatchers.IO) {
+    suspend fun checkForUpdate(context: Context, force: Boolean = false): UpdateInfo? = withContext(Dispatchers.IO) {
         try {
             if (ApiConstants.UPDATE_CHECK_URL.contains("your-aliyun-server.com")) return@withContext null
             val request = Request.Builder()
@@ -38,7 +39,7 @@ object UpdateManager {
                 null
             } ?: return@withContext null
             if (info.versionCode <= 0 || info.downloadUrl.isNullOrBlank()) return@withContext null
-            if (info.versionCode > currentVersionCode(context)) info else null
+            if (force || info.versionCode > currentVersionCode(context)) info else null
         } catch (e: Exception) {
             null
         }
