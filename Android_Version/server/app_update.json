@@ -1,7 +1,7 @@
 {
-  "versionCode": 3,
-  "versionName": "1.1.1",
-  "downloadUrl": "https://777713.xyz/update/杭工助手-v1.1.1-release.apk",
-  "changelog": "1. 优化首页按钮样式\n2. 修复截图功能兼容性问题",
+  "versionCode": 8,
+  "versionName": "1.1.4",
+  "downloadUrl": "https://777713.xyz/update/杭工助手-v1.1.4-release.apk",
+  "changelog": "1. 修复启动后等待30秒才显示用户信息的问题\n2. 同步上游：抢票改用服务器时间校准，提高整点成功率\n3. 同步上游：限制抢票次数1~20次、间隔不小于0.15秒\n4. 修复地铁优惠券\"总获得/已使用/已过期\"始终显示0的问题",
   "forceUpdate": false
 }

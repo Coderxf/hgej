@@ -23,13 +23,14 @@ android {
     }
     namespace 'com.dt.hgej'
     compileSdk 34
+    buildToolsVersion "34.0.0"
 
     defaultConfig {
         applicationId "com.dt.hgej"
         minSdk 26
         targetSdk 34
-        versionCode 7
-        versionName "1.1.3"
+        versionCode 8
+        versionName "1.1.4"
 
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables {
@@ -68,7 +69,8 @@ android {
     }
     applicationVariants.all { variant ->
         variant.outputs.all {
-            outputFileName = "${variant.buildType.name}.apk"
+            // 带版本号命名，与更新服务器 downloadUrl 的文件名规则保持一致
+            outputFileName = "杭工助手-v${variant.versionName}-${variant.buildType.name}.apk"
         }
     }
 }

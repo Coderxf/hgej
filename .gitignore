@@ -6,3 +6,15 @@ config.json
 AutoTicket.spec
 node_modules
 .claude/
+
+# Android 签名密钥与本机配置，切勿提交到公开仓库
+*.keystore
+*.jks
+keystore.properties
+local.properties
+
+# 网页版真实口令（仅提交 example 模板）
+passcodes.json
+Web_Version/server/venv/
+__pycache__/
+.zcode/

@@ -81,6 +81,8 @@ nVU2G0dqUl6D
         return Base64.encodeToString(cipher.doFinal(plaintext.toByteArray()), Base64.NO_WRAP)
     }
 
+    // ECB 是逆向自官方 App 的接口协议格式，无法改为更安全的模式，告警需保留
+    @Suppress("GetInstance")
     fun des3EcbEncrypt(key24: String, plaintext: String): String {
         val keyBytes = key24.toByteArray()
         val secretKey = SecretKeySpec(keyBytes, "DESede")
