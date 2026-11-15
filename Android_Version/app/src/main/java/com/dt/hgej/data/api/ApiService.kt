@@ -1,18 +1,28 @@
 package com.dt.hgej.data.api
 
+import com.dt.hgej.HgejApplication
 import com.dt.hgej.crypto.CryptoManager
+import com.dt.hgej.data.local.PreferencesManager
 import com.dt.hgej.data.model.*
 import com.google.gson.Gson
+import android.os.SystemClock
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import okhttp3.Request
-import okhttp3.RequestBody
+import okhttp3.RequestBody.Companion.toRequestBody
+import java.time.ZonedDateTime
+import java.time.format.DateTimeFormatter
 
 class ApiService {
 
     private val gson = Gson()
     private val client = HttpClient.client
     private val baseUrl = ApiConstants.BASE_URL
+
+    // 设备信息真机化：避免全部用户共用同一硬编码设备指纹
+    private val devicePrefs by lazy { PreferencesManager(HgejApplication.instance) }
+    private suspend fun deviceModel(): String = android.os.Build.MODEL
+    private suspend fun deviceTermId(): String = devicePrefs.getOrCreateTermId()
 
     private val encryptKeys = listOf("login_name", "user_id")
     private val noSignKeys = listOf(
@@ -31,19 +41,7 @@ class ApiService {
                 encryptKeys = encryptFields,
                 noSignKeys = noSignKeys
             )
-            val jsonBody = gson.toJson(encryptedPayload)
-            val request = Request.Builder()
-                .url(url)
-                .header("Host", "app.hzgh.org.cn")
-                .header("Accept", "application/json, text/plain, */*")
-                .header("User-Agent", "Mozilla/5.0 (Linux; Android 14) AppleWebKit/537.36 (KHTML, like Gecko) Version/4.0 Chrome/110.0.5481.154 Mobile Safari/537.36;unionApp;HZGH")
-                .header("Content-Type", "application/json;charset=UTF-8")
-                .header("Origin", "https://app.hzgh.org.cn:8123")
-                .header("X-Requested-With", "com.zjte.hanggongefamily")
-                .header("Referer", "https://app.hzgh.org.cn:8123/")
-                .post(RequestBody.create(HttpClient.JSON_MEDIA_TYPE, jsonBody))
-                .build()
-            val response = client.newCall(request).execute()
+            val response = client.newCall(buildPostRequest(url, gson.toJson(encryptedPayload))).execute()
             val body = response.body?.string()
             if (body != null) {
                 try {
@@ -52,6 +50,46 @@ class ApiService {
                     null
                 }
             } else null
+        } catch (e: Exception) {
+            null
+        }
+    }
+
+    private fun buildPostRequest(url: String, jsonBody: String): Request = Request.Builder()
+        .url(url)
+        .header("Host", "app.hzgh.org.cn")
+        .header("Accept", "application/json, text/plain, */*")
+        .header("User-Agent", "Mozilla/5.0 (Linux; Android ${android.os.Build.VERSION.RELEASE}; ${android.os.Build.MODEL}) AppleWebKit/537.36 (KHTML, like Gecko) Version/4.0 Chrome/110.0.5481.154 Mobile Safari/537.36;unionApp;HZGH")
+        .header("Content-Type", "application/json;charset=UTF-8")
+        .header("Origin", "https://app.hzgh.org.cn:8123")
+        .header("X-Requested-With", "com.zjte.hanggongefamily")
+        .header("Referer", "https://app.hzgh.org.cn:8123/")
+        .post(jsonBody.toRequestBody(HttpClient.JSON_MEDIA_TYPE))
+        .build()
+
+    /**
+     * 同步服务器时间（与上游 Python 版逻辑一致）：向查询接口发请求，
+     * 从响应头 Date 取服务器时间，以往返时延一半补偿网络延迟，
+     * 返回 服务器时间-本地时间 的偏移毫秒数。失败返回 null。
+     */
+    suspend fun syncServerTimeOffsetMs(loginName: String, sesId: String): Long? = withContext(Dispatchers.IO) {
+        try {
+            val encryptedPayload = CryptoManager.buildEncryptedPayload(
+                baseParams = baseParams() + mapOf(
+                    "login_name" to loginName,
+                    "ses_id" to sesId
+                ),
+                encryptKeys = encryptKeys,
+                noSignKeys = noSignKeys
+            )
+            val request = buildPostRequest(baseUrl + ApiConstants.U005_QUERY, gson.toJson(encryptedPayload))
+            val start = SystemClock.elapsedRealtime()
+            val response = client.newCall(request).execute()
+            val rtt = SystemClock.elapsedRealtime() - start
+            val dateHeader = response.header("Date") ?: return@withContext null
+            val serverMs = ZonedDateTime.parse(dateHeader, DateTimeFormatter.RFC_1123_DATE_TIME)
+                .toInstant().toEpochMilli()
+            serverMs + rtt / 2 - System.currentTimeMillis()
         } catch (e: Exception) {
             null
         }
@@ -101,8 +139,8 @@ class ApiService {
             "term_sys_ver" to "12",
             "root" to "0",
             "term_sys" to "2",
-            "model" to "24031PN0DC",
-            "term_id" to "42e85afdd7e346e5",
+            "model" to deviceModel(),
+            "term_id" to deviceTermId(),
             "trcode" to "U/U067"
         )
         return execute(
@@ -124,8 +162,8 @@ class ApiService {
             "term_sys_ver" to "12",
             "root" to "0",
             "term_sys" to "2",
-            "model" to "24031PN0DC",
-            "term_id" to "42e85afdd7e346e5",
+            "model" to deviceModel(),
+            "term_id" to deviceTermId(),
             "login_name" to phone,
             "pwd" to passwordMd5,
             "imgUniCode" to imgUniCode,
@@ -150,7 +188,7 @@ class ApiService {
             "term_sys_ver" to "12",
             "root" to "0",
             "term_sys" to "2",
-            "model" to "24031PN0DC",
+            "model" to deviceModel(),
             "login_name" to phone,
             "mobile" to phone,
             "imgUniCode" to captchaData.imgUniCode,
@@ -171,8 +209,8 @@ class ApiService {
             "term_sys_ver" to "12",
             "root" to "0",
             "term_sys" to "2",
-            "model" to "24031PN0DC",
-            "term_id" to "42e85afdd7e346e5",
+            "model" to deviceModel(),
+            "term_id" to deviceTermId(),
             "login_name" to phone,
             "auth_code" to authCode
         )
@@ -312,13 +350,13 @@ class ApiService {
                 .url(ApiConstants.QR_BASE_URL + ApiConstants.QR_APPLY)
                 .header("Host", "hzcode.96225.com")
                 .header("Accept", "application/json, text/plain, */*")
-                .header("User-Agent", "Mozilla/5.0 (Linux; Android 12; 23113RKC6C Build/V417IR; wv) AppleWebKit/537.36 (KHTML, like Gecko) Version/4.0 Chrome/110.0.5481.154 Mobile Safari/537.36;unionApp;HZGH")
+                .header("User-Agent", "Mozilla/5.0 (Linux; Android ${android.os.Build.VERSION.RELEASE}; ${android.os.Build.MODEL} Build/${android.os.Build.ID}; wv) AppleWebKit/537.36 (KHTML, like Gecko) Version/4.0 Chrome/110.0.5481.154 Mobile Safari/537.36;unionApp;HZGH")
                 .header("Content-Type", "application/json;charset=UTF-8")
                 .header("Origin", "https://hzcode.96225.com")
                 .header("X-Requested-With", "com.zjte.hanggongefamily")
                 .header("Referer", "https://hzcode.96225.com/hzcitizencodeh5/")
                 .header("token", token)
-                .post(RequestBody.create(HttpClient.JSON_MEDIA_TYPE, jsonBody))
+                .post(jsonBody.toRequestBody(HttpClient.JSON_MEDIA_TYPE))
                 .build()
             val response = client.newCall(request).execute()
             val body = response.body?.string()
