@@ -25,6 +25,20 @@ class PreferencesManager(private val context: Context) {
         val RUN_COUNT = stringPreferencesKey("run_count")
         val TIME_SLEEP = stringPreferencesKey("time_sleep")
         val IS_LOGGED_IN = booleanPreferencesKey("is_logged_in")
+        val TERM_ID = stringPreferencesKey("term_id")
+    }
+
+    /**
+     * 取本设备稳定设备 ID（16 位十六进制），不存在则生成并持久化。
+     * 每台设备一个，避免所有用户共享同一硬编码 term_id 被风控聚类。
+     */
+    suspend fun getOrCreateTermId(): String {
+        context.dataStore.data.first()[TERM_ID]?.takeIf { it.isNotBlank() }?.let { return it }
+        val chars = "0123456789abcdef"
+        val secureRandom = java.security.SecureRandom()
+        val id = (1..16).map { chars[secureRandom.nextInt(chars.length)] }.joinToString("")
+        context.dataStore.edit { prefs -> prefs[TERM_ID] = id }
+        return id
     }
 
     val userConfig: Flow<UserConfig> = context.dataStore.data.map { prefs ->
@@ -35,7 +49,7 @@ class PreferencesManager(private val context: Context) {
             exchangeId = prefs[EXCHANGE_ID] ?: "10",
             runTime = prefs[RUN_TIME] ?: "",
             runCount = prefs[RUN_COUNT] ?: "100",
-            timeSleep = prefs[TIME_SLEEP] ?: "0.08"
+            timeSleep = prefs[TIME_SLEEP] ?: "0.2"
         )
     }
 
