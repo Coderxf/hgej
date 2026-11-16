@@ -18,11 +18,13 @@ import string
 import time
 
 import requests
+# 统一使用 pycryptodomex（Cryptodome 命名空间）——严禁混用 Crypto 与 Cryptodome 的
+# 密钥对象与加解密器（跨库密钥对象在部分版本组合下会解密出垃圾数据）
 from Cryptodome.Cipher import DES3, PKCS1_v1_5
 from Cryptodome.Hash import SHA256
-from Crypto.PublicKey import RSA
-from Crypto.Signature import pkcs1_15
-from Crypto.Util.Padding import pad, unpad
+from Cryptodome.PublicKey import RSA
+from Cryptodome.Signature import pkcs1_15
+from Cryptodome.Util.Padding import pad, unpad
 
 # ================= 基础配置 =================
 BASE_URL = 'https://app.hzgh.org.cn'
@@ -235,7 +237,12 @@ def decrypt_data2(data2):
 
 # ================= 通用签名请求 =================
 def signed_post(endpoint, payload, encrypt_keys=None):
-    """构造加密签名请求并解密 data2。失败抛 HzApiError（错误信息不含凭据）。"""
+    """构造加密签名请求并解密 data2。失败抛 HzApiError（错误信息不含凭据）。
+
+    注意：payload 字段与原版请求严格一致——不自动补 term_sys_ver/root/term_sys/
+    model/term_id（U042/U005/OL41 等任务接口抓包中并无这些字段，多余字段会
+    改变服务器响应格式导致解密失败）；登录类接口的设备字段由调用方显式传入。
+    """
     encrypt_keys = ENCRYPT_KEYS if encrypt_keys is None else encrypt_keys
     p = {k: v for k, v in payload.items() if v is not None and v != ""}
     p["channel"] = CHANNEL
