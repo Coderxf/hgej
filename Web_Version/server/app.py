@@ -356,6 +356,24 @@ def api_cred_get():
     return jsonify(acc)
 
 
+@app.post("/api/credentials/list")
+def api_cred_list():
+    """列出全部账户（管理视图）。ses_id 脱敏返回（仅前 10 位）——
+    完整会话仍需按 login_name 精确 get，避免一个 URL 泄露全库凭据。"""
+    store = _load_credentials()
+    out = []
+    for a in store["accounts"]:
+        ses = str(a.get("ses_id") or "")
+        out.append({
+            "login_name": a.get("login_name"),
+            "name": a.get("name") or "",
+            "ses_masked": (ses[:10] + "...") if ses else "",
+            "ua": a.get("ua") or "",
+            "updated_at": a.get("updated_at") or 0,
+        })
+    return jsonify({"total": len(out), "accounts": out})
+
+
 @app.post("/api/credentials/remove")
 @require_passcode
 def api_cred_remove():
