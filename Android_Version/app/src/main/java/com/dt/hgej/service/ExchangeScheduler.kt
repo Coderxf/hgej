@@ -17,23 +17,32 @@ class ExchangeScheduler(
     val running: Boolean get() = job?.isActive == true
 
     fun start(config: UserConfig) {
+        start(listOf(config))
+    }
+
+    /**
+     * 多账户并行抢票：共 N 轮（runCount），每轮向全部账户各提交 1 次兑换，
+     * 轮间隔 sleepMs。每账户提交次数 = N（上限 1~20）。
+     */
+    fun start(configs: List<UserConfig>) {
         stop()
+        if (configs.isEmpty()) return
         val newJob = scope.launch {
-            // 与上游 Python 版一致的限制，保护接口
-            val requestedCount = config.runCount.toIntOrNull() ?: 100
-            val count = requestedCount.coerceIn(1, 20)
-            val sleepMs = ((config.timeSleep.toDoubleOrNull() ?: 0.2) * 1000)
+            val first = configs.first()
+            val requestedCount = first.runCount.toIntOrNull() ?: 100
+            val rounds = requestedCount.coerceIn(1, 20)
+            val sleepMs = ((first.timeSleep.toDoubleOrNull() ?: 0.2) * 1000)
                 .toLong()
                 .coerceIn(150, 60_000)
 
             onRunningChange?.invoke(true)
 
-            val targetTime = parseTargetTime(config.runTime)
+            val targetTime = parseTargetTime(first.runTime)
             var offsetMs = 0L
             if (targetTime != null) {
-                onLog("等待目标时间: ${config.runTime}")
+                onLog("等待目标时间: ${first.runTime}")
                 onLog("正在同步服务器时间...")
-                val offset = apiService.syncServerTimeOffsetMs(config.loginName, config.sesId)
+                val offset = apiService.syncServerTimeOffsetMs(first.loginName, first.sesId)
                 if (offset != null) {
                     offsetMs = offset
                     onLog("服务器时间同步完成，本地偏移: ${if (offset >= 0) "+" else ""}${offset}ms")
@@ -46,25 +55,25 @@ class ExchangeScheduler(
                 onLog("未设置目标时间，立即执行")
             }
 
-            if (count != requestedCount) {
-                onLog("次数已限制为 $count（范围 1~20）")
+            if (rounds != requestedCount) {
+                onLog("次数已限制为 $rounds（范围 1~20）")
             }
-            onLog("开始并发兑换，次数: $count，间隔: ${sleepMs}ms")
+            onLog("开始多账户并行兑换：${configs.size} 个账户 × $rounds 轮，轮间隔 ${sleepMs}ms")
 
             val pending = mutableListOf<Job>()
-            for (i in 1..count) {
+            for (round in 1..rounds) {
                 if (!isActive) break
-                pending += launch {
-                    val result = apiService.exchangeCoupon(
-                        config.loginName,
-                        config.userId,
-                        config.sesId,
-                        config.exchangeId
-                    )
-                    val msg = result?.msg ?: "无响应"
-                    onLog("[$i] $msg")
+                for ((idx, cfg) in configs.withIndex()) {
+                    if (!isActive) break
+                    pending += launch {
+                        val result = apiService.exchangeCoupon(
+                            cfg.loginName, cfg.userId, cfg.sesId, cfg.exchangeId
+                        )
+                        val msg = result?.msg ?: "无响应"
+                        onLog("[第${round}轮/${idx + 1}] ${cfg.loginName.take(8)}…: $msg")
+                    }
                 }
-                delay(sleepMs)
+                if (round < rounds) delay(sleepMs)
             }
             // 等收尾请求全部返回后再打完成日志
             pending.joinAll()

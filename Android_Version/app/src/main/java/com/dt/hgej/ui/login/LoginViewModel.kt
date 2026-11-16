@@ -120,7 +120,7 @@ class LoginViewModel(application: Application) : AndroidViewModel(application) {
                     state.captchaData?.imgUniCode ?: ""
                 )
                 result.onSuccess { loginResp ->
-                    prefsManager.saveLoginInfo(
+                    prefsManager.upsertAccount(
                         if (loginResp.login_name.isNullOrBlank()) state.phone else loginResp.login_name,
                         loginResp.ses_id ?: "",
                         if (loginResp.user_id.isNullOrBlank()) state.phone else loginResp.user_id
@@ -161,7 +161,7 @@ class LoginViewModel(application: Application) : AndroidViewModel(application) {
                     }
                     val result = authRepository.smsLogin(state.phone, state.smsCode)
                     result.onSuccess { loginResp ->
-                        prefsManager.saveLoginInfo(
+                        prefsManager.upsertAccount(
                             if (loginResp.login_name.isNullOrBlank()) state.phone else loginResp.login_name,
                             loginResp.ses_id ?: "",
                             if (loginResp.user_id.isNullOrBlank()) state.phone else loginResp.user_id

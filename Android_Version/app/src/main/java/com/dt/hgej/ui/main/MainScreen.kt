@@ -13,7 +13,7 @@ import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AccessTime
-import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.ArrowDropDown
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Stop
@@ -77,8 +77,10 @@ fun MainScreen(
                 },
                 actions = {
                     if (uiState.isLoggedIn) {
+                        // 账户切换器：点当前账户名展开列表
+                        AccountSwitcher(uiState, viewModel, onNavigateToLogin)
                         TextButton(onClick = { viewModel.logout() }) {
-                            Text("退出")
+                            Text("移除")
                         }
                     } else {
                         TextButton(onClick = onNavigateToLogin) {
@@ -99,11 +101,14 @@ fun MainScreen(
             // Status card
             Card(modifier = Modifier.fillMaxWidth()) {
                 Column(modifier = Modifier.padding(12.dp)) {
-                    Text("登录状态: ${if (uiState.isLoggedIn) "已登录" else "未登录"}", style = MaterialTheme.typography.bodyMedium)
+                    Text(
+                        "登录状态: ${if (uiState.isLoggedIn) "已登录（${uiState.accounts.size} 个账户）" else "未登录"}",
+                        style = MaterialTheme.typography.bodyMedium
+                    )
                     if (uiState.isLoggedIn) {
                         if (uiState.userName.isNotBlank()) {
                             Row(verticalAlignment = Alignment.CenterVertically) {
-                                Text("用户: ${uiState.userName}", style = MaterialTheme.typography.bodySmall)
+                                Text("当前用户: ${uiState.userName}", style = MaterialTheme.typography.bodySmall)
                                 if (uiState.remainIntegral > 0) {
                                     Spacer(Modifier.width(8.dp))
                                     Text(
@@ -114,25 +119,29 @@ fun MainScreen(
                                 }
                             }
                         }
-                        Text("账号: ${uiState.config.loginName}", style = MaterialTheme.typography.bodySmall)
-                        Text("SES_ID: ${uiState.config.sesId.take(16)}...", style = MaterialTheme.typography.bodySmall)
+                        Text("当前账户: ${uiState.activeLogin.take(16)}", style = MaterialTheme.typography.bodySmall)
+                        Text("会话: ${uiState.activeAccount?.sesId?.take(16) ?: ""}...", style = MaterialTheme.typography.bodySmall)
                     }
                 }
             }
 
             // Config form
-            Text("配置", style = MaterialTheme.typography.titleMedium)
+            Text(
+                if (uiState.isLoggedIn) "排程配置（对全部 ${uiState.accounts.size} 个账户生效）"
+                else "配置",
+                style = MaterialTheme.typography.titleMedium
+            )
             ConfigForm(
-                config = uiState.config,
+                config = uiState.schedule,
                 onConfigChange = viewModel::updateConfig,
                 onAutoFill = viewModel::autoFillRunTime
             )
-            if (uiState.config.loginName.isNotBlank() && uiState.config.sesId.isNotBlank()) {
+            if (uiState.schedule.loginName.isNotBlank() && uiState.schedule.sesId.isNotBlank()) {
                 OutlinedButton(
                     onClick = { viewModel.applyManualCredentials() },
                     modifier = Modifier.fillMaxWidth()
                 ) {
-                    Text("应用配置凭证")
+                    Text("添加/更新为账户")
                 }
             }
 
@@ -338,6 +347,58 @@ fun ConfigForm(
                 singleLine = true,
                 modifier = Modifier.weight(1f),
                 textStyle = MaterialTheme.typography.bodySmall
+            )
+        }
+    }
+}
+
+/** 顶栏账户切换器：点击当前账户展开全部账户列表，点击切换，「移除」删当前账户 */
+@Composable
+fun AccountSwitcher(uiState: MainUiState, viewModel: MainViewModel, onAddAccount: () -> Unit) {
+    var expanded by remember { mutableStateOf(false) }
+    Box {
+        TextButton(
+            onClick = { expanded = true },
+            contentPadding = PaddingValues(horizontal = 8.dp, vertical = 0.dp),
+            modifier = Modifier.height(34.dp)
+        ) {
+            Text(
+                text = uiState.activeDisplayName.take(10),
+                style = MaterialTheme.typography.labelLarge,
+                maxLines = 1
+            )
+            Icon(Icons.Filled.ArrowDropDown, contentDescription = "切换账户", modifier = Modifier.size(18.dp))
+        }
+        DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
+            uiState.accounts.forEach { acc ->
+                DropdownMenuItem(
+                    text = {
+                        val label = acc.name.takeIf { it.isNotBlank() } ?: acc.loginName
+                        Text(
+                            if (acc.loginName == uiState.activeLogin) "● $label"
+                            else label,
+                            style = MaterialTheme.typography.bodyMedium
+                        )
+                    },
+                    onClick = {
+                        expanded = false
+                        viewModel.switchAccount(acc.loginName)
+                    }
+                )
+            }
+            DropdownMenuItem(
+                text = { Text("移除当前账户", color = MaterialTheme.colorScheme.error) },
+                onClick = {
+                    expanded = false
+                    viewModel.logout()
+                }
+            )
+            DropdownMenuItem(
+                text = { Text("添加新账户（去登录）") },
+                onClick = {
+                    expanded = false
+                    onAddAccount()
+                }
             )
         }
     }

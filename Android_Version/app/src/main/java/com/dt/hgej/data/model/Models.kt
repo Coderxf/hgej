@@ -130,6 +130,15 @@ data class UserConfig(
     val timeSleep: String = "0.2"
 )
 
+/** 已保存的账户（多账户支持：凭据按账户隔离，排程配置全局共享） */
+data class StoredAccount(
+    val loginName: String = "",
+    val userId: String = "",
+    val sesId: String = "",
+    val name: String = "",
+    val savedAt: Long = 0
+)
+
 data class UpdateInfo(
     val versionCode: Long = 0,
     val versionName: String? = null,

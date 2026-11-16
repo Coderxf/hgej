@@ -8,9 +8,9 @@ import androidx.lifecycle.ProcessLifecycleOwner
 import androidx.lifecycle.viewModelScope
 import com.dt.hgej.data.api.ApiService
 import com.dt.hgej.data.local.PreferencesManager
+import com.dt.hgej.data.model.StoredAccount
 import com.dt.hgej.data.model.UpdateInfo
 import com.dt.hgej.data.model.UserConfig
-import com.dt.hgej.data.model.UserInfoResponse
 import com.dt.hgej.repository.QrRepository
 import com.dt.hgej.repository.TaskRepository
 import com.dt.hgej.service.ExchangeScheduler
@@ -21,13 +21,15 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
-import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.launch
 import java.io.File
 
 data class MainUiState(
-    val config: UserConfig = UserConfig(),
-    val isLoggedIn: Boolean = false,
+    val schedule: UserConfig = UserConfig(),
+    val accounts: List<StoredAccount> = emptyList(),
+    val activeLogin: String = "",
+    val activeAccount: StoredAccount? = null,
     val userName: String = "",
     val remainIntegral: Int = 0,
     val logs: List<String> = emptyList(),
@@ -36,7 +38,14 @@ data class MainUiState(
     val updateInfo: UpdateInfo? = null,
     val isDownloading: Boolean = false,
     val downloadProgress: Int = 0
-)
+) {
+    /** 有账户即视为已登录 */
+    val isLoggedIn: Boolean get() = accounts.isNotEmpty()
+
+    /** 活动账户显示名：优先昵称，回退 loginName */
+    val activeDisplayName: String
+        get() = activeAccount?.name?.takeIf { it.isNotBlank() } ?: activeLogin
+}
 
 class MainViewModel(application: Application) : AndroidViewModel(application) {
 
@@ -57,6 +66,9 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     private var pendingApkFile: File? = null
 
+    /** 记录上次已查询用户信息的账户，避免排程输入防抖触发重复网络请求 */
+    private var lastQueriedLogin: String = ""
+
     init {
         ProcessLifecycleOwner.get().lifecycle.addObserver(LifecycleEventObserver { _, event ->
             if (event == Lifecycle.Event.ON_START) {
@@ -69,26 +81,33 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 }
             }
         })
-        // 配置不监听 DataStore 回显：防抖落盘后回发的旧值会覆盖用户正在输入的新值；
-        // 登录后的配置刷新由下方 isLoggedIn 收集器负责
+        // 账户列表 / 活动账户 / 排程配置 任一变化都会驱动状态刷新；
+        // 用户信息仅在活动账户身份变化时查询，防止输入防抖引发重复请求
         viewModelScope.launch {
-            prefsManager.isLoggedIn.collect { loggedIn ->
-                _uiState.value = _uiState.value.copy(isLoggedIn = loggedIn)
-                if (loggedIn) {
-                    val config = prefsManager.getConfig()
-                    _uiState.value = _uiState.value.copy(config = config)
-                    queryUserInfo(config)
+            combine(
+                prefsManager.accountsFlow,
+                prefsManager.activeLoginFlow,
+                prefsManager.scheduleConfig
+            ) { accounts, active, schedule ->
+                Triple(accounts, active, schedule)
+            }.collect { (accounts, active, schedule) ->
+                val activeAcc = accounts.firstOrNull { it.loginName == active }
+                    ?: accounts.firstOrNull()
+                _uiState.value = _uiState.value.copy(
+                    accounts = accounts,
+                    activeAccount = activeAcc,
+                    activeLogin = activeAcc?.loginName ?: "",
+                    schedule = schedule
+                )
+                val login = activeAcc?.loginName ?: ""
+                if (login.isNotBlank() && login != lastQueriedLogin) {
+                    lastQueriedLogin = login
+                    refreshActiveUserInfo(activeAcc)
                 }
             }
         }
         viewModelScope.launch {
-            val config = prefsManager.getConfig()
-            val loggedIn = prefsManager.isLoggedIn.first()
             autoFillRunTime()
-            if (!loggedIn && config.loginName.isNotBlank() && config.sesId.isNotBlank()) {
-                prefsManager.setLoggedIn(true)
-                addLog("检测到已有凭证，自动登录")
-            }
         }
         addLog("程序已启动")
         checkUpdate()
@@ -157,11 +176,14 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
-    private suspend fun queryUserInfo(config: UserConfig? = null) {
-        val cfg = config ?: _uiState.value.config
-        if (cfg.loginName.isBlank() || cfg.sesId.isBlank()) return
+    /** 查询活动账户的用户信息（姓名/积分）；会话失效只标记该账户，不清凭据 */
+    private suspend fun refreshActiveUserInfo(account: StoredAccount?) {
+        if (account == null || account.sesId.isBlank()) {
+            _uiState.value = _uiState.value.copy(userName = "", remainIntegral = 0)
+            return
+        }
         val info = try {
-            apiService.getUserInfo(cfg.loginName, cfg.sesId)
+            apiService.getUserInfo(account.loginName, account.sesId)
         } catch (e: Exception) {
             addLog("获取用户信息失败: ${e.message}")
             null
@@ -171,59 +193,79 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             val integral = info.remain_integral?.toIntOrNull() ?: 0
             _uiState.value = _uiState.value.copy(userName = name, remainIntegral = integral)
             if (name.isNotBlank()) {
+                // 查到昵称后回写账户（顶栏/列表显示用），不再触发查询（loginName 未变）
+                prefsManager.upsertAccount(
+                    account.loginName, account.sesId, account.userId, name
+                )
                 if (integral > 0) {
-                    addLog("当前用户: $name  积分: $integral")
+                    addLog("当前账户: $name  积分: $integral")
                 } else {
-                    addLog("当前用户: $name")
+                    addLog("当前账户: $name")
                 }
             }
         } else {
-            _uiState.value = _uiState.value.copy(isLoggedIn = false, userName = "", remainIntegral = 0)
-            addLog("登录会话已失效，请重新登录")
-            prefsManager.setLoggedIn(false)
+            _uiState.value = _uiState.value.copy(userName = "", remainIntegral = 0)
+            addLog("账户 ${displayName(account)} 会话已失效，请重新登录该账户")
         }
     }
 
+    private fun displayName(account: StoredAccount): String =
+        account.name.takeIf { it.isNotBlank() } ?: account.loginName.take(8)
+
     fun autoFillRunTime() {
         val nextTime = Utils.getNextRunTime()
-        val newConfig = _uiState.value.config.copy(runTime = nextTime)
-        updateConfig(newConfig)
+        updateConfig(_uiState.value.schedule.copy(runTime = nextTime))
         addLog("自动填入执行时间: $nextTime")
     }
 
+    /** 手动粘贴凭据：作为账户加入/刷新并置为活动 */
     fun applyManualCredentials() {
-        val config = _uiState.value.config
-        if (config.loginName.isBlank() || config.sesId.isBlank()) {
+        val schedule = _uiState.value.schedule
+        if (schedule.loginName.isBlank() || schedule.sesId.isBlank()) {
             addLog("请先填写 login_name 和 ses_id")
             return
         }
         viewModelScope.launch {
-            prefsManager.setLoggedIn(true)
-            addLog("应用配置凭证成功")
+            prefsManager.upsertAccount(schedule.loginName, schedule.sesId, schedule.loginName)
+            addLog("账户 ${schedule.loginName.take(8)}… 已添加/更新并设为当前")
         }
     }
 
     private var configSaveJob: Job? = null
 
+    /** 排程配置变更（仅落盘排程字段，凭据在账户列表中隔离） */
     fun updateConfig(config: UserConfig) {
-        _uiState.value = _uiState.value.copy(config = config)
+        _uiState.value = _uiState.value.copy(schedule = config)
         // 输入过程每个字符都会触发，300ms 防抖后只落盘最后一次
         configSaveJob?.cancel()
         configSaveJob = viewModelScope.launch {
             delay(300)
-            prefsManager.saveConfig(config)
+            prefsManager.saveSchedule(config)
         }
     }
 
+    /** 抢票：全部有效账户并行参与，每账户各 N 轮 */
     fun startExchange() {
-        val config = _uiState.value.config
-        if (config.loginName.isBlank() || config.sesId.isBlank()) {
-            addLog("请先登录或填写 ses_id")
+        val configs = _uiState.value.accounts
+            .filter { it.sesId.isNotBlank() }
+            .map { acc ->
+                UserConfig(
+                    loginName = acc.loginName,
+                    sesId = acc.sesId,
+                    userId = acc.userId.ifBlank { acc.loginName },
+                    exchangeId = _uiState.value.schedule.exchangeId,
+                    runTime = _uiState.value.schedule.runTime,
+                    runCount = _uiState.value.schedule.runCount,
+                    timeSleep = _uiState.value.schedule.timeSleep
+                )
+            }
+        if (configs.isEmpty()) {
+            addLog("没有可用账户（ses_id 为空），请先登录")
             return
         }
         if (_uiState.value.schedulerRunning) return
-        scheduler.start(config)
-        addLog("启动兑换任务")
+        scheduler.start(configs)
+        addLog("启动兑换任务：${configs.size} 个账户并行")
     }
 
     fun stopExchange() {
@@ -231,35 +273,40 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         addLog("停止兑换任务")
     }
 
+    /** 每日任务：顺序遍历全部账户，日志按账户分组 */
     fun doDailyTask() {
-        val config = _uiState.value.config
-        if (config.loginName.isBlank() || config.sesId.isBlank()) {
-            addLog("请先登录")
+        val accounts = _uiState.value.accounts.filter { it.sesId.isNotBlank() }
+        if (accounts.isEmpty()) {
+            addLog("没有可用账户，请先登录")
             return
         }
         if (_uiState.value.isDoingDailyTask) return
         _uiState.value = _uiState.value.copy(isDoingDailyTask = true)
 
         viewModelScope.launch {
-            addLog("开始每日任务...")
-            val result = taskRepository.executeDailyWorkflow(
-                config.loginName,
-                config.sesId
-            ) { msg -> addLog(msg) }
-            result.onSuccess { addLog("每日任务完成") }
-                .onFailure { addLog("每日任务失败: ${it.message}") }
+            addLog("开始每日任务：${accounts.size} 个账户")
+            accounts.forEachIndexed { index, acc ->
+                val tag = displayName(acc)
+                addLog("—— [${index + 1}/${accounts.size}] $tag ——")
+                val result = taskRepository.executeDailyWorkflow(
+                    acc.loginName,
+                    acc.sesId
+                ) { msg -> addLog("[$tag] $msg") }
+                result.onSuccess { addLog("[$tag] 每日任务完成") }
+                    .onFailure { addLog("[$tag] 每日任务失败: ${it.message}") }
+            }
             _uiState.value = _uiState.value.copy(isDoingDailyTask = false)
         }
     }
 
     fun getQrCode() {
-        val config = _uiState.value.config
-        if (config.loginName.isBlank() || config.sesId.isBlank()) {
+        val acc = _uiState.value.activeAccount
+        if (acc == null || acc.sesId.isBlank()) {
             addLog("请先登录")
             return
         }
         viewModelScope.launch {
-            val result = qrRepository.getGreenTravelCode(config.loginName, config.sesId)
+            val result = qrRepository.getGreenTravelCode(acc.loginName, acc.sesId)
             result.onSuccess {
                 addLog("乘车码获取成功")
             }.onFailure {
@@ -268,18 +315,31 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
-    fun logout() {
+    /** 切换活动账户（抢票任务针对旧账户集，切换前先停止） */
+    fun switchAccount(loginName: String) {
+        if (loginName == _uiState.value.activeLogin) return
         scheduler.stop()
         viewModelScope.launch {
-            prefsManager.logout()
-            _uiState.value = _uiState.value.copy(
-                schedulerRunning = false,
-                isDoingDailyTask = false,
-                config = UserConfig(),
-                remainIntegral = 0
-            )
+            prefsManager.setActiveAccount(loginName)
+            addLog("已切换到账户 ${loginName.take(8)}…")
         }
-        addLog("已退出登录")
+    }
+
+    /** 移除当前活动账户；还有其他账户则自动切到剩余第一个，全部删完才是未登录 */
+    fun logout() {
+        scheduler.stop()
+        val target = _uiState.value.activeLogin
+        if (target.isBlank()) return
+        viewModelScope.launch {
+            val next = prefsManager.removeAccount(target)
+            lastQueriedLogin = ""   // 允许新活动账户重新查询
+            _uiState.value = _uiState.value.copy(remainIntegral = 0, userName = "")
+            if (next != null) {
+                addLog("已移除账户 ${target.take(8)}…，切换到 ${next.loginName.take(8)}…")
+            } else {
+                addLog("已移除账户 ${target.take(8)}…，无剩余账户")
+            }
+        }
     }
 
     fun clearLogs() {
