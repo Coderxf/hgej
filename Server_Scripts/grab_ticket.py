@@ -18,7 +18,6 @@ from datetime import datetime, timedelta
 
 from hz_common import (HzApiError, exchange_once, log_print,
                        query_user_info, resolve_ses_id, session)
-
 LOGIN_NAME, ACC = None, os.environ.get("HANGGONG_ACC", "")
 SES_FALLBACK = os.environ.get(f"HANGGONG_SES_ID_{ACC}", "")
 EXCHANGE_ID = os.environ.get("HANGGONG_EXCHANGE_ID", "11")
@@ -106,8 +105,13 @@ def main():
     LOGIN_NAME = login_name
     USER_ID = login_name
 
-    ses_id, source = resolve_ses_id(login_name, SES_FALLBACK, acc)
+    ses_id, source, ua = resolve_ses_id(login_name, SES_FALLBACK, acc)
     SES_ID = ses_id
+
+    # 采用账户上报的真实设备 UA（与登录设备一致），替代脚本内置 UA 池
+    if ua:
+        session.headers.update({"User-Agent": ua})
+        log_print("已采用账户上报的真实设备 UA")
 
     log_print("校验会话...")
     try:

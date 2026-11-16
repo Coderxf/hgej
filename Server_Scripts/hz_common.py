@@ -143,8 +143,10 @@ CRED_API = os.environ.get("HANGGONG_CRED_API", "").rstrip("/")
 
 
 def fetch_credential(login_name):
-    """按 login_name（唯一键）拉取凭据中心里该账户的最新 ses_id。
-    返回 (ses_id, name)；中心未配置/账户不存在/网络失败返回 None。"""
+    """按 login_name（唯一键）拉取凭据中心里该账户的最新凭据。
+    返回 (ses_id, name, ua)；中心未配置/账户不存在/网络失败返回 None。
+    ua 为安卓端登录上报的真实设备 UA（脚本应采用它发起请求，
+    使服务器看到的设备与登录设备一致）。"""
     if not CRED_API or not login_name:
         return None
     try:
@@ -159,23 +161,26 @@ def fetch_credential(login_name):
             return None
         data = resp.json()
         ses = data.get("ses_id")
-        return (ses, data.get("name") or "") if ses else None
+        if not ses:
+            return None
+        return (ses, data.get("name") or "", data.get("ua") or "")
     except Exception as e:
         log_print(f"凭据中心拉取失败: {e.__class__.__name__}")
         return None
 
 
 def resolve_ses_id(login_name, fallback_ses, acc_label=""):
-    """解析账户可用 ses_id：凭据中心优先，回退环境变量。返回 (ses_id, 来源描述)。"""
+    """解析账户可用 ses_id：凭据中心优先，回退环境变量。
+    返回 (ses_id, 来源描述, ua)。ua 可能为空串（传统 env 模式无 UA）。"""
     remote = fetch_credential(login_name)
     if remote:
-        ses, name = remote
+        ses, name, ua = remote
         who = name or (f"账户{acc_label}" if acc_label else login_name[:8])
-        log_print(f"已从凭据中心拉取 {who} 的最新会话")
-        return ses, f"凭据中心({who})"
+        log_print(f"已从凭据中心拉取 {who} 的最新会话" + ("（含真实设备 UA）" if ua else ""))
+        return ses, f"凭据中心({who})", ua
     if fallback_ses:
         log_print("凭据中心不可用，回退使用环境变量中的 ses_id")
-        return fallback_ses, "环境变量"
+        return fallback_ses, "环境变量", ""
     raise HzApiError("无法获取会话：凭据中心不可用且未配置 HANGGONG_SES_ID_*")
 
 

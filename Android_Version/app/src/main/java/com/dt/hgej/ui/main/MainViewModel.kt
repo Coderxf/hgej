@@ -38,10 +38,7 @@ data class MainUiState(
     val isDoingDailyTask: Boolean = false,
     val updateInfo: UpdateInfo? = null,
     val isDownloading: Boolean = false,
-    val downloadProgress: Int = 0,
-    val syncEnabled: Boolean = false,
-    val syncUrl: String = "https://777713.xyz",
-    val syncSiteKey: String = ""
+    val downloadProgress: Int = 0
 ) {
     /** 有账户即视为已登录 */
     val isLoggedIn: Boolean get() = accounts.isNotEmpty()
@@ -113,13 +110,6 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         }
         viewModelScope.launch {
             autoFillRunTime()
-        }
-        viewModelScope.launch {
-            prefsManager.syncSettings.collect { s ->
-                _uiState.value = _uiState.value.copy(
-                    syncEnabled = s.enabled, syncUrl = s.url, syncSiteKey = s.siteKey
-                )
-            }
         }
         addLog("程序已启动")
         checkUpdate()
@@ -337,25 +327,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
-    /** 保存凭据同步设置 */
-    fun updateSyncSettings(enabled: Boolean, url: String, siteKey: String) {
-        viewModelScope.launch {
-            prefsManager.saveSyncSettings(
-                com.dt.hgej.data.local.PreferencesManager.SyncSettings(enabled, url, siteKey)
-            )
-            addLog(if (enabled) "凭据同步已开启" else "凭据同步已关闭")
-        }
-    }
-
-    /** 手动触发一次凭据同步 */
-    fun syncNow() {
-        viewModelScope.launch {
-            val r = syncer.syncAll()
-            addLog(r.message)
-        }
-    }
-
-    /** 移除当前活动账户；还有其他账户则自动切到剩余第一个，全部删完才是未登录 */
+    /** 移除当前活动账户；还有其他账户则自动切到剩余第一个，全部删完才是未登录。
+     *  注意：只删本机，服务器凭据库保留该账户——青龙定时任务仍需继续运行 */
     fun logout() {
         scheduler.stop()
         val target = _uiState.value.activeLogin
@@ -365,13 +338,9 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             lastQueriedLogin = ""   // 允许新活动账户重新查询
             _uiState.value = _uiState.value.copy(remainIntegral = 0, userName = "")
             if (next != null) {
-                addLog("已移除账户 ${target.take(8)}…，切换到 ${next.loginName.take(8)}…")
+                addLog("已移除本机账户 ${target.take(8)}…（服务器凭据保留，定时任务不受影响），切换到 ${next.loginName.take(8)}…")
             } else {
-                addLog("已移除账户 ${target.take(8)}…，无剩余账户")
-            }
-            // 凭据库同步移除，防止青龙拉到已下线账户
-            syncer.removeRemote(target).let { r ->
-                if (r.ok) addLog("服务器凭据库已同步移除该账户")
+                addLog("已移除本机账户 ${target.take(8)}…（服务器凭据保留），无剩余账户")
             }
         }
     }

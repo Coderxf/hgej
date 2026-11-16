@@ -17,7 +17,7 @@ daily_task.py - 每日任务：登录 → 签到×3 → 评论 → 积分查询
 import os
 
 from hz_common import (HzApiError, log_print, query_user_info,
-                       resolve_ses_id, daily_task_workflow)
+                       resolve_ses_id, daily_task_workflow, session)
 
 
 def resolve_login_name():
@@ -36,7 +36,12 @@ def main():
     if not login_name:
         raise SystemExit("缺少账户标识：请配置 HANGGONG_ACC + HANGGONG_USER_ID_{ACC} 或 HANGGONG_USER_ID")
 
-    ses_id, source = resolve_ses_id(login_name, os.environ.get(f"HANGGONG_SES_ID_{acc}", ""), acc)
+    ses_id, source, ua = resolve_ses_id(login_name, os.environ.get(f"HANGGONG_SES_ID_{acc}", ""), acc)
+
+    # 采用账户上报的真实设备 UA（与登录设备一致），替代脚本内置 UA 池
+    if ua:
+        session.headers.update({"User-Agent": ua})
+        log_print("已采用账户上报的真实设备 UA")
 
     # 先校验会话有效性，避免带着失效 ses_id 白跑
     log_print(f"校验会话（来源: {source}）...")

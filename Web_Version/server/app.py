@@ -294,9 +294,12 @@ def _save_credentials(store: dict):
 
 
 @app.post("/api/credentials/sync")
-@require_passcode
 def api_cred_sync():
-    """上报账户凭据（按 login_name 合并 upsert）。安卓/网页版登录成功后调用。"""
+    """上报账户凭据（按 login_name 合并 upsert，含真实设备 UA）。
+
+    免口令设计（与 get 一致）：凭据同步是本工具的内部链路，
+    sync/get/remove 三接口均以 login_name 为唯一键，无额外鉴权。
+    """
     accounts = _body().get("accounts")
     if not isinstance(accounts, list) or not accounts:
         return jsonify({"error": "accounts 列表为空"}), 400
@@ -316,7 +319,7 @@ def api_cred_sync():
                 "ses_id": ses_id,
                 "user_id": str(a.get("user_id") or existing.get("user_id") or login_name),
                 "name": str(a.get("name") or existing.get("name") or ""),
-                "label": g.label,
+                "ua": str(a.get("ua") or existing.get("ua") or ""),
                 "updated_at": now,
             })
             updated += 1
@@ -326,12 +329,12 @@ def api_cred_sync():
                 "user_id": str(a.get("user_id") or login_name),
                 "ses_id": ses_id,
                 "name": str(a.get("name") or ""),
-                "label": g.label,
+                "ua": str(a.get("ua") or ""),
                 "updated_at": now,
             })
             added += 1
     _save_credentials(store)
-    app.logger.info("[%s] 凭据同步: 新增 %d 更新 %d，库中共 %d 个账户", g.label, added, updated, len(store["accounts"]))
+    app.logger.info("凭据同步: 新增 %d 更新 %d，库中共 %d 个账户", added, updated, len(store["accounts"]))
     return jsonify({"ok": True, "added": added, "updated": updated, "total": len(store["accounts"])})
 
 
@@ -366,7 +369,7 @@ def api_cred_remove():
     removed = before != len(store["accounts"])
     if removed:
         _save_credentials(store)
-        app.logger.info("[%s] 凭据移除: %s（剩余 %d 个账户）", g.label, login_name[:8], len(store["accounts"]))
+        app.logger.info("凭据移除: %s（剩余 %d 个账户）", login_name[:8], len(store["accounts"]))
     return jsonify({"ok": True, "removed": removed})
 
 

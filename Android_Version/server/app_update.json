@@ -1,7 +1,7 @@
 {
-  "versionCode": 12,
-  "versionName": "1.1.8",
-  "downloadUrl": "https://777713.xyz/update/杭工助手-v1.1.8-release.apk",
-  "changelog": "1. 新增凭据同步：设置页开启并填入口令后，登录的账户自动同步到服务器，青龙定时任务自动拉取最新会话，ses_id 过期后 App 重登即可，无需手动改服务器配置\n2. 移除账户时同步清理服务器凭据库",
+  "versionCode": 13,
+  "versionName": "1.1.9",
+  "downloadUrl": "https://777713.xyz/update/杭工助手-v1.1.9-release.apk",
+  "changelog": "1. 凭据同步默认开启并简化：登录的账户自动同步到服务器（含真实设备信息），无需任何配置\n2. 服务器定时任务自动使用与登录设备一致的会话与设备信息，会话过期后 App 重登即可\n3. 移除账户仅清理本机，服务器定时任务不受影响",
   "forceUpdate": false
 }

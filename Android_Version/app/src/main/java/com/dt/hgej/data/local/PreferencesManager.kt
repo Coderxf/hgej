@@ -43,11 +43,6 @@ class PreferencesManager(private val context: Context) {
         // 多账户字段
         val ACCOUNTS_JSON = stringPreferencesKey("accounts_json")
         val ACTIVE_LOGIN = stringPreferencesKey("active_login")
-
-        // 凭据同步（登录后把账户凭据上报到服务器凭据库，供青龙定时任务动态拉取）
-        val SYNC_ENABLED = booleanPreferencesKey("sync_enabled")
-        val SYNC_URL = stringPreferencesKey("sync_url")
-        val SYNC_SITE_KEY = stringPreferencesKey("sync_site_key")
     }
 
     private val gson = Gson()
@@ -175,27 +170,4 @@ class PreferencesManager(private val context: Context) {
 
     /** 兼容旧调用语义：是否还有账户（=是否处于登录态） */
     val isLoggedIn: Flow<Boolean> = accountsFlow.map { it.isNotEmpty() }
-
-    // ================= 凭据同步设置 =================
-    data class SyncSettings(
-        val enabled: Boolean = false,
-        val url: String = "https://777713.xyz",
-        val siteKey: String = ""
-    )
-
-    val syncSettings: Flow<SyncSettings> = context.dataStore.data.map { prefs ->
-        SyncSettings(
-            enabled = prefs[SYNC_ENABLED] == true,
-            url = prefs[SYNC_URL]?.takeIf { it.isNotBlank() } ?: "https://777713.xyz",
-            siteKey = prefs[SYNC_SITE_KEY] ?: ""
-        )
-    }
-
-    suspend fun saveSyncSettings(settings: SyncSettings) {
-        context.dataStore.edit { prefs ->
-            prefs[SYNC_ENABLED] = settings.enabled
-            prefs[SYNC_URL] = settings.url
-            prefs[SYNC_SITE_KEY] = settings.siteKey
-        }
-    }
 }
