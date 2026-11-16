@@ -145,6 +145,53 @@ fun MainScreen(
                 }
             }
 
+            // 凭据同步设置
+            Card(modifier = Modifier.fillMaxWidth()) {
+                Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text("凭据同步", style = MaterialTheme.typography.titleSmall)
+                            Text(
+                                "开启后登录的账户自动同步到服务器，青龙定时任务动态拉取最新会话",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                        Switch(
+                            checked = uiState.syncEnabled,
+                            onCheckedChange = {
+                                viewModel.updateSyncSettings(it, uiState.syncUrl, uiState.syncSiteKey)
+                            }
+                        )
+                    }
+                    if (uiState.syncEnabled) {
+                        OutlinedTextField(
+                            value = uiState.syncUrl,
+                            onValueChange = { viewModel.updateSyncSettings(true, it, uiState.syncSiteKey) },
+                            label = { Text("服务器地址") },
+                            singleLine = true,
+                            modifier = Modifier.fillMaxWidth(),
+                            textStyle = MaterialTheme.typography.bodySmall
+                        )
+                        OutlinedTextField(
+                            value = uiState.syncSiteKey,
+                            onValueChange = { viewModel.updateSyncSettings(true, uiState.syncUrl, it) },
+                            label = { Text("访问口令（与网页版相同）") },
+                            singleLine = true,
+                            modifier = Modifier.fillMaxWidth(),
+                            textStyle = MaterialTheme.typography.bodySmall
+                        )
+                        OutlinedButton(
+                            onClick = { viewModel.syncNow() },
+                            enabled = !uiState.isDownloading,
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Text("立即同步")
+                        }
+                    }
+                }
+            }
+
             // Action buttons
             Row(
                 modifier = Modifier.fillMaxWidth(),

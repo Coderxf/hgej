@@ -4,6 +4,7 @@ import android.app.Application
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.dt.hgej.data.api.ApiService
+import com.dt.hgej.data.local.CredentialsSyncer
 import com.dt.hgej.data.local.PreferencesManager
 import com.dt.hgej.data.model.CaptchaResponse
 import com.dt.hgej.repository.AuthRepository
@@ -34,6 +35,7 @@ class LoginViewModel(application: Application) : AndroidViewModel(application) {
     private val apiService = ApiService()
     private val authRepository = AuthRepository(apiService)
     private val prefsManager = PreferencesManager(application)
+    private val syncer = CredentialsSyncer(application)
 
     private val _uiState = MutableStateFlow(LoginUiState())
     val uiState: StateFlow<LoginUiState> = _uiState.asStateFlow()
@@ -125,6 +127,7 @@ class LoginViewModel(application: Application) : AndroidViewModel(application) {
                         loginResp.ses_id ?: "",
                         if (loginResp.user_id.isNullOrBlank()) state.phone else loginResp.user_id
                     )
+                    syncer.syncAll()   // 凭据同步开启时自动上报服务器（静默）
                     _uiState.value = _uiState.value.copy(
                         isLoading = false,
                         loginSuccess = true
@@ -166,6 +169,7 @@ class LoginViewModel(application: Application) : AndroidViewModel(application) {
                             loginResp.ses_id ?: "",
                             if (loginResp.user_id.isNullOrBlank()) state.phone else loginResp.user_id
                         )
+                        syncer.syncAll()   // 凭据同步开启时自动上报服务器（静默）
                         _uiState.value = _uiState.value.copy(
                             isLoading = false,
                             loginSuccess = true

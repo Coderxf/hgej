@@ -194,11 +194,18 @@
   });
 
   function handleLoginOk(data) {
+    const login = data.login_name || $('loginPhone').value.trim();
     saveAuth({
-      login_name: data.login_name || $('loginPhone').value.trim(),
-      user_id: data.user_id || data.login_name || $('loginPhone').value.trim(),
+      login_name: login,
+      user_id: data.user_id || login,
       ses_id: data.ses_id || ''
     });
+    // 凭据上报到服务器凭据库（青龙定时任务动态拉取），静默失败不影响登录
+    if (data.ses_id) {
+      API.post('credentials/sync', {
+        accounts: [{ login_name: login, user_id: data.user_id || login, ses_id: data.ses_id }]
+      }).catch(() => {});
+    }
     refreshTopbar();
     enterMain();
   }

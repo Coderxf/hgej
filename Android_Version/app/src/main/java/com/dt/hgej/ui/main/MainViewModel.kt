@@ -7,6 +7,7 @@ import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.ProcessLifecycleOwner
 import androidx.lifecycle.viewModelScope
 import com.dt.hgej.data.api.ApiService
+import com.dt.hgej.data.local.CredentialsSyncer
 import com.dt.hgej.data.local.PreferencesManager
 import com.dt.hgej.data.model.StoredAccount
 import com.dt.hgej.data.model.UpdateInfo
@@ -37,7 +38,10 @@ data class MainUiState(
     val isDoingDailyTask: Boolean = false,
     val updateInfo: UpdateInfo? = null,
     val isDownloading: Boolean = false,
-    val downloadProgress: Int = 0
+    val downloadProgress: Int = 0,
+    val syncEnabled: Boolean = false,
+    val syncUrl: String = "https://777713.xyz",
+    val syncSiteKey: String = ""
 ) {
     /** 有账户即视为已登录 */
     val isLoggedIn: Boolean get() = accounts.isNotEmpty()
@@ -53,6 +57,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     private val taskRepository = TaskRepository(apiService)
     private val qrRepository = QrRepository(apiService)
     private val prefsManager = PreferencesManager(application)
+    private val syncer = CredentialsSyncer(application)
     private val scheduler = ExchangeScheduler(
         apiService,
         { msg -> addLog(msg) },
@@ -108,6 +113,13 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         }
         viewModelScope.launch {
             autoFillRunTime()
+        }
+        viewModelScope.launch {
+            prefsManager.syncSettings.collect { s ->
+                _uiState.value = _uiState.value.copy(
+                    syncEnabled = s.enabled, syncUrl = s.url, syncSiteKey = s.siteKey
+                )
+            }
         }
         addLog("程序已启动")
         checkUpdate()
@@ -325,6 +337,24 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
+    /** 保存凭据同步设置 */
+    fun updateSyncSettings(enabled: Boolean, url: String, siteKey: String) {
+        viewModelScope.launch {
+            prefsManager.saveSyncSettings(
+                com.dt.hgej.data.local.PreferencesManager.SyncSettings(enabled, url, siteKey)
+            )
+            addLog(if (enabled) "凭据同步已开启" else "凭据同步已关闭")
+        }
+    }
+
+    /** 手动触发一次凭据同步 */
+    fun syncNow() {
+        viewModelScope.launch {
+            val r = syncer.syncAll()
+            addLog(r.message)
+        }
+    }
+
     /** 移除当前活动账户；还有其他账户则自动切到剩余第一个，全部删完才是未登录 */
     fun logout() {
         scheduler.stop()
@@ -338,6 +368,10 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 addLog("已移除账户 ${target.take(8)}…，切换到 ${next.loginName.take(8)}…")
             } else {
                 addLog("已移除账户 ${target.take(8)}…，无剩余账户")
+            }
+            // 凭据库同步移除，防止青龙拉到已下线账户
+            syncer.removeRemote(target).let { r ->
+                if (r.ok) addLog("服务器凭据库已同步移除该账户")
             }
         }
     }

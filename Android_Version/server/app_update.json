@@ -1,7 +1,7 @@
 {
-  "versionCode": 11,
-  "versionName": "1.1.7",
-  "downloadUrl": "https://777713.xyz/update/杭工助手-v1.1.7-release.apk",
-  "changelog": "1. 新增多账户支持：多个手机号可同时保存在应用内，无需来回切换登录\n2. 抢票改为全账户并行：每账户各 N 次，日志按账户标注\n3. 每日任务一键执行全部账户，日志分组展示\n4. 顶栏新增账户切换菜单，退出按钮改为移除当前账户（不影响其他账户）",
+  "versionCode": 12,
+  "versionName": "1.1.8",
+  "downloadUrl": "https://777713.xyz/update/杭工助手-v1.1.8-release.apk",
+  "changelog": "1. 新增凭据同步：设置页开启并填入口令后，登录的账户自动同步到服务器，青龙定时任务自动拉取最新会话，ses_id 过期后 App 重登即可，无需手动改服务器配置\n2. 移除账户时同步清理服务器凭据库",
   "forceUpdate": false
 }

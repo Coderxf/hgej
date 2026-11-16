@@ -10,6 +10,7 @@ import hmac
 import json
 import logging
 import os
+import time
 
 from flask import Flask, g, jsonify, request, send_from_directory
 from werkzeug.exceptions import RequestEntityTooLarge
@@ -18,6 +19,7 @@ import hz_api
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 PASSCODES_FILE = os.environ.get("PASSCODES_FILE", os.path.join(BASE_DIR, "passcodes.json"))
+CREDENTIALS_FILE = os.environ.get("CREDENTIALS_FILE", os.path.join(BASE_DIR, "credentials.json"))
 PORT = int(os.environ.get("PORT", "8090"))
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
@@ -265,6 +267,107 @@ def api_server_time():
     if server_ms is None:
         return jsonify({"error": "服务器时间同步失败"}), 502
     return jsonify({"server_ms": round(server_ms), "offset_ms": offset_ms})
+
+
+# ---------------- 凭据同步中心（青龙定时任务动态拉取） ----------------
+def _load_credentials() -> dict:
+    """读取凭据库 → {"accounts":[...]}；文件缺失返回空库"""
+    try:
+        with open(CREDENTIALS_FILE, encoding="utf-8") as f:
+            data = json.load(f)
+        if isinstance(data, dict) and isinstance(data.get("accounts"), list):
+            return data
+    except FileNotFoundError:
+        pass
+    except Exception as e:
+        app.logger.error("凭据库读取失败: %s", e)
+    return {"accounts": []}
+
+
+def _save_credentials(store: dict):
+    with open(CREDENTIALS_FILE, "w", encoding="utf-8") as f:
+        json.dump(store, f, ensure_ascii=False, indent=2)
+    try:
+        os.chmod(CREDENTIALS_FILE, 0o600)   # 凭据文件仅属主可读写
+    except OSError:
+        pass
+
+
+@app.post("/api/credentials/sync")
+@require_passcode
+def api_cred_sync():
+    """上报账户凭据（按 login_name 合并 upsert）。安卓/网页版登录成功后调用。"""
+    accounts = _body().get("accounts")
+    if not isinstance(accounts, list) or not accounts:
+        return jsonify({"error": "accounts 列表为空"}), 400
+    store = _load_credentials()
+    now = int(time.time())
+    added = updated = 0
+    for a in accounts:
+        if not isinstance(a, dict):
+            continue
+        login_name = str(a.get("login_name") or "").strip()
+        ses_id = str(a.get("ses_id") or "").strip()
+        if not login_name or not ses_id:
+            continue
+        existing = next((x for x in store["accounts"] if x.get("login_name") == login_name), None)
+        if existing:
+            existing.update({
+                "ses_id": ses_id,
+                "user_id": str(a.get("user_id") or existing.get("user_id") or login_name),
+                "name": str(a.get("name") or existing.get("name") or ""),
+                "label": g.label,
+                "updated_at": now,
+            })
+            updated += 1
+        else:
+            store["accounts"].append({
+                "login_name": login_name,
+                "user_id": str(a.get("user_id") or login_name),
+                "ses_id": ses_id,
+                "name": str(a.get("name") or ""),
+                "label": g.label,
+                "updated_at": now,
+            })
+            added += 1
+    _save_credentials(store)
+    app.logger.info("[%s] 凭据同步: 新增 %d 更新 %d，库中共 %d 个账户", g.label, added, updated, len(store["accounts"]))
+    return jsonify({"ok": True, "added": added, "updated": updated, "total": len(store["accounts"])})
+
+
+@app.post("/api/credentials/get")
+@require_passcode
+def api_cred_get():
+    """按 login_name 精确拉取单账户凭据（青龙脚本动态获取 ses_id）。
+
+    用 POST+JSON 体而非 GET 查询串：login_name 是 Base64 串含 +/=，
+    走查询串会被 URL 解码破坏（+ 变空格）。
+    """
+    login_name = str(_body().get("login_name") or "").strip()
+    if not login_name:
+        return jsonify({"error": "缺少 login_name"}), 400
+    store = _load_credentials()
+    acc = next((x for x in store["accounts"] if x.get("login_name") == login_name), None)
+    if not acc:
+        return jsonify({"error": "该账户不在凭据库中（请先在 App/网页版登录）"}), 404
+    return jsonify(acc)
+
+
+@app.post("/api/credentials/remove")
+@require_passcode
+def api_cred_remove():
+    """从凭据库移除账户（安卓端移除账户时调用，防止残留失效凭据）"""
+    login_name = str(_body().get("login_name") or "").strip()
+    if not login_name:
+        return jsonify({"error": "缺少 login_name"}), 400
+    store = _load_credentials()
+    before = len(store["accounts"])
+    store["accounts"] = [x for x in store["accounts"] if x.get("login_name") != login_name]
+    removed = before != len(store["accounts"])
+    if removed:
+        _save_credentials(store)
+        app.logger.info("[%s] 凭据移除: %s（剩余 %d 个账户）", g.label, login_name[:8], len(store["accounts"]))
+    return jsonify({"ok": True, "removed": removed})
 
 
 # ---------------- 静态前端 ----------------
