@@ -1,7 +1,7 @@
 {
-  "versionCode": 10,
-  "versionName": "1.1.6",
-  "downloadUrl": "https://777713.xyz/update/杭工助手-v1.1.6-release.apk",
-  "changelog": "1. 凭证字段 复制/粘贴/删除 按钮移入输入框内，不再额外占用屏幕空间\n2. 新增开发者功能：连点顶部版本号5次可强制重装服务器版本（用于同版本重复测试）",
+  "versionCode": 11,
+  "versionName": "1.1.7",
+  "downloadUrl": "https://777713.xyz/update/杭工助手-v1.1.7-release.apk",
+  "changelog": "1. 新增多账户支持：多个手机号可同时保存在应用内，无需来回切换登录\n2. 抢票改为全账户并行：每账户各 N 次，日志按账户标注\n3. 每日任务一键执行全部账户，日志分组展示\n4. 顶栏新增账户切换菜单，退出按钮改为移除当前账户（不影响其他账户）",
   "forceUpdate": false
 }
