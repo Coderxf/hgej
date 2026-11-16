@@ -21,17 +21,36 @@
 5. **凭据不再进日志**：旧脚本 `job()` 会把 login_name / ses_id 打印到日志
 6. 解密失败返回 None 而非崩溃；请求加 8s 连接 / 20s 读取超时
 
-## 配置（环境变量，与旧脚本命名兼容）
+## 配置（环境变量）
 
-| 变量 | 必填 | 说明 |
+### 凭据动态化（推荐，替代手工维护 ses_id）
+
+```bash
+export HANGGONG_CRED_API="https://777713.xyz"
+```
+
+配好后脚本启动时按 `HANGGONG_USER_ID*`（唯一键）到凭据中心拉取该账户的
+最新 ses_id。凭据的写入由安卓 App / 网页版登录时自动上报——**ses_id 过期
+后任意一端重登即可，无需改服务器任何配置**。
+
+传统方式仍然兼容：不配 `HANGGONG_CRED_API`，直接配 `HANGGONG_SES_ID`
+（或后缀形式 `HANGGONG_SES_ID_{ACC}`），失效需手工更新。
+
+### 账户标识
+
+| 变量 | 说明 |
+|---|---|
+| `HANGGONG_ACC` | 账户后缀（如 `178`/`132`/`kong`），脚本读 `HANGGONG_USER_ID_{ACC}` |
+| `HANGGONG_USER_ID` | 或直接用通用名（无后缀），二选一 |
+| `HANGGONG_USER_ID_{ACC}` | 账户标识（config.sh 现有的加密串），**凭据库唯一匹配键** |
+
+### 抢票参数
+
+| 变量 | 默认 | 说明 |
 |---|---|---|
-| `HANGGONG_USER_ID_kong` | 是 | login_name / user_id |
-| `HANGGONG_SES_ID_kong` | 是 | 会话 id（重新登录后变化） |
-| `HANGGONG_V` | 否 | App 版本号，默认 3.1.7 |
-| `HANGGONG_UA_INDEX` | 否 | UA 池序号 0~9，默认 0；**同账号两脚本同值** |
-| `HANGGONG_EXCHANGE_ID` | 否 | 抢票券种：9=2元 10=4元 11=6元（默认 11） |
-| `HANGGONG_COUNT` | 否 | 抢购次数 1~20（默认 10） |
-| `HANGGONG_SLEEP` | 否 | 提交间隔秒 ≥0.15（默认 0.2） |
+| `HANGGONG_EXCHANGE_ID` | 11 | 券种：9=2元 10=4元 11=6元 |
+| `HANGGONG_COUNT` | 10 | 抢购次数 1~20 |
+| `HANGGONG_SLEEP` | 0.2 | 提交间隔秒 ≥0.15 |
 
 ## 部署到服务器
 
@@ -43,14 +62,15 @@ scp Server_Scripts/hz_common.py Server_Scripts/daily_task.py Server_Scripts/grab
 # 服务器：依赖
 pip3 install requests pycryptodome pycryptodomex -i https://mirrors.aliyun.com/pypi/simple/
 
-# 手动运行
-export HANGGONG_USER_ID_kong='xxx' HANGGONG_SES_ID_kong='xxx' HANGGONG_UA_INDEX=0
+# 手动运行（凭据中心模式）
+export HANGGONG_CRED_API="https://777713.xyz"
+export HANGGONG_ACC=178                     # 或直接 export HANGGONG_USER_ID=<加密串>
 python3 daily_task.py
 python3 grab_ticket.py     # 常驻，等下一个档位自动抢
-
-# 定时任务示例（crontab，每天 6:55 拉起抢票常驻等待）
-# 55 6 * * * cd /path/to/scripts && HANGGONG_UA_INDEX=0 ... python3 grab_ticket.py >> grab.log 2>&1
 ```
+
+> ses_id 过期时脚本退出并提示「去 App 重登该手机号」——App 端重登后凭据
+> 自动同步到凭据中心，下次运行自动生效，无需改任何配置。
 
 > 抢票脚本 `grab_ticket.py` 自身带档位等待，可直接常驻或由 cron 在档位前几分钟拉起。
 > ses_id 过期时脚本会直接退出并提示重新登录，不会白跑。

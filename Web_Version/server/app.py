@@ -336,12 +336,12 @@ def api_cred_sync():
 
 
 @app.post("/api/credentials/get")
-@require_passcode
 def api_cred_get():
     """按 login_name 精确拉取单账户凭据（青龙脚本动态获取 ses_id）。
 
-    用 POST+JSON 体而非 GET 查询串：login_name 是 Base64 串含 +/=，
-    走查询串会被 URL 解码破坏（+ 变空格）。
+    免口令设计：login_name 本身即唯一键（不公开的加密串），知道它才能拉到对应
+    ses_id；sync/remove 等写操作仍需口令。用 POST+JSON 体而非 GET 查询串：
+    login_name 是 Base64 串含 +/=，走查询串会被 URL 解码破坏（+ 变空格）。
     """
     login_name = str(_body().get("login_name") or "").strip()
     if not login_name:

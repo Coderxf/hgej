@@ -134,17 +134,16 @@ class HzApiError(Exception):
 
 
 # ============ 凭据同步中心（可选） ============
-# 配置 HANGGONG_CRED_API + HANGGONG_SITE_KEY 后，脚本启动时按 login_name
+# 配置 HANGGONG_CRED_API 后，脚本启动时按 login_name（HANGGONG_USER_ID，唯一键）
 # 到凭据中心拉取该账户的最新 ses_id（凭据由安卓 App / 网页版登录时自动上报），
 # 彻底告别手工维护 HANGGONG_SES_ID_*；未配置则回退读环境变量里的 ses_id
 CRED_API = os.environ.get("HANGGONG_CRED_API", "").rstrip("/")
-SITE_KEY = os.environ.get("HANGGONG_SITE_KEY", "")
 
 
 def fetch_credential(login_name):
-    """按 login_name 拉取凭据中心里该账户的最新 ses_id。
+    """按 login_name（唯一键）拉取凭据中心里该账户的最新 ses_id。
     返回 (ses_id, name)；中心未配置/账户不存在/网络失败返回 None。"""
-    if not CRED_API or not SITE_KEY or not login_name:
+    if not CRED_API or not login_name:
         return None
     try:
         # POST+JSON 体而非 GET 查询串：login_name 是 Base64 串含 +/=，
@@ -152,7 +151,6 @@ def fetch_credential(login_name):
         resp = requests.post(
             CRED_API + "/api/credentials/get",
             json={"login_name": login_name},
-            headers={"X-Site-Key": SITE_KEY},
             timeout=(8, 20), verify=True,
         )
         if resp.status_code == 404:
