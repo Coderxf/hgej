@@ -18,3 +18,4 @@ passcodes.json
 Web_Version/server/venv/
 __pycache__/
 .zcode/
+Web_Version/server/credentials.json
