@@ -1,7 +1,7 @@
 {
-  "versionCode": 15,
-  "versionName": "1.1.11",
-  "downloadUrl": "https://777713.xyz/update/杭工助手-v1.1.11-release.apk",
-  "changelog": "1. 修复：重新登录同一账户后，配置区的 LOGIN_NAME/SES_ID 输入框未刷新为最新会话的问题",
+  "versionCode": 16,
+  "versionName": "1.1.12",
+  "downloadUrl": "https://777713.xyz/update/杭工助手-v1.1.12-release.apk",
+  "changelog": "1. 修复：登录后凭据输入框仍未填充的问题（启动时序竞态导致填充被空值覆盖，已改为单一状态所有者根治）",
   "forceUpdate": false
 }

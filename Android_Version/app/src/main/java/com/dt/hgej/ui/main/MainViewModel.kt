@@ -87,9 +87,10 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 }
             }
         })
-        // 账户列表 / 活动账户 变化驱动状态刷新；
-        // 排程配置不监听 DataStore 回显（防抖落盘后回发的旧值会覆盖输入中的字符），
-        // 仅启动时读一次初始值；凭据输入框随活动账户切换自动填充
+        // schedule 状态单一所有者：全部写入都在本收集器内完成，杜绝并发协程互相覆盖。
+        // 首次收集：读存储初始排程 + 填充当前账户凭据 + autoFill；此后仅在
+        // loginName/ses_id 任一变化时刷新凭据填充（覆盖切换账户与重登换新两种场景）
+        var initialized = false
         viewModelScope.launch {
             combine(
                 prefsManager.accountsFlow,
@@ -104,9 +105,21 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 )
                 val login = activeAcc?.loginName ?: ""
                 val ses = activeAcc?.sesId ?: ""
-                // loginName 或 ses_id 任一变化都刷新填充：
-                // 覆盖"切换账户"与"重新登录同账户获得新会话"两种场景
-                if (login != lastAppliedLogin || ses != lastAppliedSesId) {
+
+                if (!initialized) {
+                    initialized = true
+                    val stored = prefsManager.getSchedule()
+                    _uiState.value = _uiState.value.copy(
+                        schedule = stored.copy(
+                            loginName = login,
+                            sesId = ses,
+                            userId = activeAcc?.userId ?: ""
+                        )
+                    )
+                    lastAppliedLogin = login
+                    lastAppliedSesId = ses
+                    autoFillRunTime()
+                } else if (login != lastAppliedLogin || ses != lastAppliedSesId) {
                     lastAppliedLogin = login
                     lastAppliedSesId = ses
                     _uiState.value = _uiState.value.copy(
@@ -117,16 +130,12 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                         )
                     )
                 }
+
                 if (login.isNotBlank() && login != lastQueriedLogin) {
                     lastQueriedLogin = login
                     refreshActiveUserInfo(activeAcc)
                 }
             }
-        }
-        viewModelScope.launch {
-            // 初始排程值读一次
-            _uiState.value = _uiState.value.copy(schedule = prefsManager.getSchedule())
-            autoFillRunTime()
         }
         addLog("程序已启动")
         checkUpdate()
