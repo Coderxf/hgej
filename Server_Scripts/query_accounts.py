@@ -50,7 +50,7 @@ def main():
         login = a.get("login_name") or ""
         print(f"\n[{i}] {name}")
         print(f"    login_name : {login}")
-        print(f"    会话       : {a.get('ses_masked') or '(空)'}   更新于 {upd}")
+        print(f"    会话       : {a.get('ses_id') or '(空)'}   更新于 {upd}")
         print(f"    设备       : {device_desc(a.get('ua'))}")
         if verify:
             try:
