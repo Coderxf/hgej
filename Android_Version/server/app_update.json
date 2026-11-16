@@ -1,7 +1,7 @@
 {
-  "versionCode": 14,
-  "versionName": "1.1.10",
-  "downloadUrl": "https://777713.xyz/update/杭工助手-v1.1.10-release.apk",
-  "changelog": "1. 切换账户后乘车码页自动刷新并显示当前账户归属（此前显示的还是上一账户的码）\n2. 切换账户后配置区的 LOGIN_NAME/SES_ID 输入框自动填充新账户的凭据",
+  "versionCode": 15,
+  "versionName": "1.1.11",
+  "downloadUrl": "https://777713.xyz/update/杭工助手-v1.1.11-release.apk",
+  "changelog": "1. 修复：重新登录同一账户后，配置区的 LOGIN_NAME/SES_ID 输入框未刷新为最新会话的问题",
   "forceUpdate": false
 }

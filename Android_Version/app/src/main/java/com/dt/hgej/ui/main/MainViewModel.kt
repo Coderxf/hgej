@@ -71,8 +71,9 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     /** 记录上次已查询用户信息的账户，避免排程输入防抖触发重复网络请求 */
     private var lastQueriedLogin: String = ""
 
-    /** 记录上次已填充凭据输入框的账户 */
+    /** 记录上次已填充凭据输入框的账户与会话（重登换新会话时也要刷新填充） */
     private var lastAppliedLogin: String = ""
+    private var lastAppliedSesId: String = ""
 
     init {
         ProcessLifecycleOwner.get().lifecycle.addObserver(LifecycleEventObserver { _, event ->
@@ -102,13 +103,16 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                     activeLogin = activeAcc?.loginName ?: ""
                 )
                 val login = activeAcc?.loginName ?: ""
-                if (login != lastAppliedLogin) {
-                    // 切换账户：凭据输入框填充新活动账户（便于复制/查看），排程字段不动
+                val ses = activeAcc?.sesId ?: ""
+                // loginName 或 ses_id 任一变化都刷新填充：
+                // 覆盖"切换账户"与"重新登录同账户获得新会话"两种场景
+                if (login != lastAppliedLogin || ses != lastAppliedSesId) {
                     lastAppliedLogin = login
+                    lastAppliedSesId = ses
                     _uiState.value = _uiState.value.copy(
                         schedule = _uiState.value.schedule.copy(
                             loginName = login,
-                            sesId = activeAcc?.sesId ?: "",
+                            sesId = ses,
                             userId = activeAcc?.userId ?: ""
                         )
                     )
