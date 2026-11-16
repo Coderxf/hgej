@@ -272,28 +272,25 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
-    /** 抢票：全部有效账户并行参与，每账户各 N 轮 */
+    /** 抢票：只执行当前活动账户（多账户仅保存/切换，执行始终单账户） */
     fun startExchange() {
-        val configs = _uiState.value.accounts
-            .filter { it.sesId.isNotBlank() }
-            .map { acc ->
-                UserConfig(
-                    loginName = acc.loginName,
-                    sesId = acc.sesId,
-                    userId = acc.userId.ifBlank { acc.loginName },
-                    exchangeId = _uiState.value.schedule.exchangeId,
-                    runTime = _uiState.value.schedule.runTime,
-                    runCount = _uiState.value.schedule.runCount,
-                    timeSleep = _uiState.value.schedule.timeSleep
-                )
-            }
-        if (configs.isEmpty()) {
+        val acc = _uiState.value.activeAccount
+        if (acc == null || acc.sesId.isBlank()) {
             addLog("没有可用账户（ses_id 为空），请先登录")
             return
         }
         if (_uiState.value.schedulerRunning) return
-        scheduler.start(configs)
-        addLog("启动兑换任务：${configs.size} 个账户并行")
+        val config = UserConfig(
+            loginName = acc.loginName,
+            sesId = acc.sesId,
+            userId = acc.userId.ifBlank { acc.loginName },
+            exchangeId = _uiState.value.schedule.exchangeId,
+            runTime = _uiState.value.schedule.runTime,
+            runCount = _uiState.value.schedule.runCount,
+            timeSleep = _uiState.value.schedule.timeSleep
+        )
+        scheduler.start(config)
+        addLog("启动兑换任务：当前账户 ${displayName(acc)}")
     }
 
     fun stopExchange() {
@@ -301,10 +298,10 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         addLog("停止兑换任务")
     }
 
-    /** 每日任务：顺序遍历全部账户，日志按账户分组 */
+    /** 每日任务：只执行当前活动账户 */
     fun doDailyTask() {
-        val accounts = _uiState.value.accounts.filter { it.sesId.isNotBlank() }
-        if (accounts.isEmpty()) {
+        val acc = _uiState.value.activeAccount
+        if (acc == null || acc.sesId.isBlank()) {
             addLog("没有可用账户，请先登录")
             return
         }
@@ -312,17 +309,14 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         _uiState.value = _uiState.value.copy(isDoingDailyTask = true)
 
         viewModelScope.launch {
-            addLog("开始每日任务：${accounts.size} 个账户")
-            accounts.forEachIndexed { index, acc ->
-                val tag = displayName(acc)
-                addLog("—— [${index + 1}/${accounts.size}] $tag ——")
-                val result = taskRepository.executeDailyWorkflow(
-                    acc.loginName,
-                    acc.sesId
-                ) { msg -> addLog("[$tag] $msg") }
-                result.onSuccess { addLog("[$tag] 每日任务完成") }
-                    .onFailure { addLog("[$tag] 每日任务失败: ${it.message}") }
-            }
+            val tag = displayName(acc)
+            addLog("开始每日任务（当前账户: $tag）")
+            val result = taskRepository.executeDailyWorkflow(
+                acc.loginName,
+                acc.sesId
+            ) { msg -> addLog("[$tag] $msg") }
+            result.onSuccess { addLog("[$tag] 每日任务完成") }
+                .onFailure { addLog("[$tag] 每日任务失败: ${it.message}") }
             _uiState.value = _uiState.value.copy(isDoingDailyTask = false)
         }
     }

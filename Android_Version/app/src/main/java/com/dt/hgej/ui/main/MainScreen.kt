@@ -102,7 +102,7 @@ fun MainScreen(
             Card(modifier = Modifier.fillMaxWidth()) {
                 Column(modifier = Modifier.padding(12.dp)) {
                     Text(
-                        "登录状态: ${if (uiState.isLoggedIn) "已登录（${uiState.accounts.size} 个账户）" else "未登录"}",
+                        "登录状态: ${if (uiState.isLoggedIn) "已登录（当前: ${uiState.activeDisplayName.take(10)}${if (uiState.accounts.size > 1) " · 另存 ${uiState.accounts.size - 1} 个账户" else ""}）" else "未登录"}",
                         style = MaterialTheme.typography.bodyMedium
                     )
                     if (uiState.isLoggedIn) {
@@ -127,7 +127,7 @@ fun MainScreen(
 
             // Config form
             Text(
-                if (uiState.isLoggedIn) "排程配置（对全部 ${uiState.accounts.size} 个账户生效）"
+                if (uiState.isLoggedIn) "排程配置（仅对当前账户生效）"
                 else "配置",
                 style = MaterialTheme.typography.titleMedium
             )

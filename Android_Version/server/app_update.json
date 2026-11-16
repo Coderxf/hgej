@@ -1,7 +1,7 @@
 {
-  "versionCode": 16,
-  "versionName": "1.1.12",
-  "downloadUrl": "https://777713.xyz/update/杭工助手-v1.1.12-release.apk",
-  "changelog": "1. 修复：登录后凭据输入框仍未填充的问题（启动时序竞态导致填充被空值覆盖，已改为单一状态所有者根治）",
+  "versionCode": 17,
+  "versionName": "1.1.13",
+  "downloadUrl": "https://777713.xyz/update/杭工助手-v1.1.13-release.apk",
+  "changelog": "1. 执行模式调整：抢票与每日任务只执行当前选中的账户（多账户仍可保存与切换，互不影响）",
   "forceUpdate": false
 }
