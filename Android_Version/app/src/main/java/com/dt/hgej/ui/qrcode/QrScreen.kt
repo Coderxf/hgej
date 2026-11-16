@@ -140,6 +140,14 @@ fun QrScreen(
                             horizontalAlignment = Alignment.CenterHorizontally,
                             verticalArrangement = Arrangement.spacedBy(8.dp)
                         ) {
+                            // 账户归属提示：明确当前乘车码属于哪个账户
+                            if (uiState.accountLabel.isNotBlank()) {
+                                Text(
+                                    "当前账户: ${uiState.accountLabel}",
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    color = MaterialTheme.colorScheme.primary
+                                )
+                            }
                             val imageData = qrCode.qrcodeImage ?: qrCode.qrcode
                             val qrBitmap = if (imageData != null) {
                                 remember(imageData) {

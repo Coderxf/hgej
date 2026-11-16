@@ -1,7 +1,7 @@
 {
-  "versionCode": 13,
-  "versionName": "1.1.9",
-  "downloadUrl": "https://777713.xyz/update/杭工助手-v1.1.9-release.apk",
-  "changelog": "1. 凭据同步默认开启并简化：登录的账户自动同步到服务器（含真实设备信息），无需任何配置\n2. 服务器定时任务自动使用与登录设备一致的会话与设备信息，会话过期后 App 重登即可\n3. 移除账户仅清理本机，服务器定时任务不受影响",
+  "versionCode": 14,
+  "versionName": "1.1.10",
+  "downloadUrl": "https://777713.xyz/update/杭工助手-v1.1.10-release.apk",
+  "changelog": "1. 切换账户后乘车码页自动刷新并显示当前账户归属（此前显示的还是上一账户的码）\n2. 切换账户后配置区的 LOGIN_NAME/SES_ID 输入框自动填充新账户的凭据",
   "forceUpdate": false
 }

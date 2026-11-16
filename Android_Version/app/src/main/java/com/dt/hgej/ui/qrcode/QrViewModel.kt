@@ -6,11 +6,13 @@ import androidx.lifecycle.viewModelScope
 import com.dt.hgej.data.api.ApiService
 import com.dt.hgej.data.local.PreferencesManager
 import com.dt.hgej.data.model.QrCodeResponse
+import com.dt.hgej.data.model.StoredAccount
 import com.dt.hgej.data.model.SubwayTicketResponse
 import com.dt.hgej.repository.QrRepository
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.launch
 
 data class QrUiState(
@@ -18,8 +20,14 @@ data class QrUiState(
     val qrCode: QrCodeResponse? = null,
     val tickets: SubwayTicketResponse? = null,
     val currentAwardType: String = "1",
-    val error: String? = null
-)
+    val error: String? = null,
+    val activeAccount: StoredAccount? = null
+) {
+    /** 乘车码归属账户的展示名：优先昵称，回退 loginName */
+    val accountLabel: String
+        get() = activeAccount?.name?.takeIf { it.isNotBlank() }
+            ?: activeAccount?.loginName?.take(16) ?: ""
+}
 
 class QrViewModel(application: Application) : AndroidViewModel(application) {
 
@@ -30,8 +38,22 @@ class QrViewModel(application: Application) : AndroidViewModel(application) {
     private val _uiState = MutableStateFlow(QrUiState())
     val uiState: StateFlow<QrUiState> = _uiState.asStateFlow()
 
+    /** 记录已加载的账户，活动账户变化时自动重载（切换账户后乘车码/券跟着换人） */
+    private var loadedLogin: String = ""
+
     init {
-        loadData()
+        viewModelScope.launch {
+            combine(
+                prefsManager.accountsFlow,
+                prefsManager.activeLoginFlow
+            ) { accounts, active -> accounts to active }.collect { (accounts, active) ->
+                val activeAcc = accounts.firstOrNull { it.loginName == active }
+                    ?: accounts.firstOrNull()
+                if ((activeAcc?.loginName ?: "") != loadedLogin) {
+                    loadData()
+                }
+            }
+        }
     }
 
     fun loadData() {
@@ -41,6 +63,7 @@ class QrViewModel(application: Application) : AndroidViewModel(application) {
                 currentAwardType = _uiState.value.currentAwardType
             )
             val acc = prefsManager.activeAccount()
+            loadedLogin = acc?.loginName ?: ""
 
             if (acc == null || acc.sesId.isBlank()) {
                 _uiState.value = QrUiState(isLoading = false, error = "请先登录")
@@ -55,7 +78,8 @@ class QrViewModel(application: Application) : AndroidViewModel(application) {
                 qrCode = qrResult.getOrNull(),
                 tickets = ticketResult.getOrNull(),
                 currentAwardType = _uiState.value.currentAwardType,
-                error = if (qrResult.isFailure) qrResult.exceptionOrNull()?.message else null
+                error = if (qrResult.isFailure) qrResult.exceptionOrNull()?.message else null,
+                activeAccount = acc
             )
         }
     }
