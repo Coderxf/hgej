@@ -126,16 +126,22 @@ class PreferencesManager(private val context: Context) {
 
     /**
      * 追加或刷新账户并置为活动：已有同名账户仅更新凭据/昵称，否则追加。
-     * 登录成功与手动「应用配置凭证」都走这里。
+     * 登录成功（新会话必有效）走默认 resetInvalid=true 清除失效标记；
+     * 仅回写昵称等场景传 false，避免误清校验结果。
      */
-    suspend fun upsertAccount(loginName: String, sesId: String, userId: String, name: String = "") {
+    suspend fun upsertAccount(
+        loginName: String, sesId: String, userId: String,
+        name: String = "", resetInvalid: Boolean = true
+    ) {
         context.dataStore.edit { prefs ->
             val accounts = loadAccounts(prefs).toMutableList()
             val existing = accounts.firstOrNull { it.loginName == loginName }
             if (existing != null) {
                 accounts[accounts.indexOf(existing)] = existing.copy(
                     sesId = sesId, userId = userId.ifBlank { existing.userId },
-                    name = name.ifBlank { existing.name }, savedAt = System.currentTimeMillis()
+                    name = name.ifBlank { existing.name },
+                    invalid = if (resetInvalid) false else existing.invalid,
+                    savedAt = System.currentTimeMillis()
                 )
             } else {
                 accounts.add(
@@ -146,6 +152,18 @@ class PreferencesManager(private val context: Context) {
                 )
             }
             persistAccounts(prefs, accounts, loginName)
+        }
+    }
+
+    /** 标记账户会话失效/恢复（U005 校验结果持久化，供账户列表红色标注） */
+    suspend fun markAccountInvalid(loginName: String, invalid: Boolean) {
+        context.dataStore.edit { prefs ->
+            val accounts = loadAccounts(prefs).toMutableList()
+            val idx = accounts.indexOfFirst { it.loginName == loginName }
+            if (idx >= 0 && accounts[idx].invalid != invalid) {
+                accounts[idx] = accounts[idx].copy(invalid = invalid)
+                persistAccounts(prefs, accounts, prefs[ACTIVE_LOGIN])
+            }
         }
     }
 

@@ -1,7 +1,7 @@
 {
-  "versionCode": 17,
-  "versionName": "1.1.13",
-  "downloadUrl": "https://777713.xyz/update/杭工助手-v1.1.13-release.apk",
-  "changelog": "1. 执行模式调整：抢票与每日任务只执行当前选中的账户（多账户仍可保存与切换，互不影响）",
+  "versionCode": 18,
+  "versionName": "1.1.14",
+  "downloadUrl": "https://777713.xyz/update/杭工助手-v1.1.14-release.apk",
+  "changelog": "1. 账户有效性校验增强：多账户启动时自动逐个校验会话，失效账户在顶栏账户菜单中红色标注「已失效」\n2. 会话失效的账户执行抢票/每日任务时明确拦截并提示重新登录\n3. 状态卡失效时显示红色提示",
   "forceUpdate": false
 }

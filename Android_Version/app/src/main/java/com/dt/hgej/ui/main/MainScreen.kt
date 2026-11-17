@@ -101,9 +101,17 @@ fun MainScreen(
             // Status card
             Card(modifier = Modifier.fillMaxWidth()) {
                 Column(modifier = Modifier.padding(12.dp)) {
+                    val activeInvalid = uiState.activeAccount?.invalid == true
+                    val statusColor = if (activeInvalid) MaterialTheme.colorScheme.error
+                                      else MaterialTheme.colorScheme.onSurface
                     Text(
-                        "登录状态: ${if (uiState.isLoggedIn) "已登录（当前: ${uiState.activeDisplayName.take(10)}${if (uiState.accounts.size > 1) " · 另存 ${uiState.accounts.size - 1} 个账户" else ""}）" else "未登录"}",
-                        style = MaterialTheme.typography.bodyMedium
+                        "登录状态: " + when {
+                            !uiState.isLoggedIn -> "未登录"
+                            activeInvalid -> "当前账户会话已失效，请重新登录"
+                            else -> "已登录（当前: ${uiState.activeDisplayName.take(10)}${if (uiState.accounts.size > 1) " · 另存 ${uiState.accounts.size - 1} 个账户" else ""}）"
+                        },
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = statusColor
                     )
                     if (uiState.isLoggedIn) {
                         if (uiState.userName.isNotBlank()) {
@@ -374,11 +382,23 @@ fun AccountSwitcher(uiState: MainUiState, viewModel: MainViewModel, onAddAccount
                 DropdownMenuItem(
                     text = {
                         val label = acc.name.takeIf { it.isNotBlank() } ?: acc.loginName
-                        Text(
-                            if (acc.loginName == uiState.activeLogin) "● $label"
-                            else label,
-                            style = MaterialTheme.typography.bodyMedium
-                        )
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Text(
+                                if (acc.loginName == uiState.activeLogin) "● $label" else label,
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = if (acc.invalid) MaterialTheme.colorScheme.error
+                                        else MaterialTheme.colorScheme.onSurface,
+                                maxLines = 1
+                            )
+                            if (acc.invalid) {
+                                Spacer(Modifier.width(6.dp))
+                                Text(
+                                    "已失效",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = MaterialTheme.colorScheme.error
+                                )
+                            }
+                        }
                     },
                     onClick = {
                         expanded = false

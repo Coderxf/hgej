@@ -23,6 +23,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import java.io.File
 
@@ -135,6 +136,11 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                     lastQueriedLogin = login
                     refreshActiveUserInfo(activeAcc)
                 }
+                // 启动首次收集后：多账户时后台全量校验一次（失效标红，供菜单提示）
+                if (!initialized) {
+                    initialized = true
+                    if (accounts.size > 1) validateAllAccounts()
+                }
             }
         }
         addLog("程序已启动")
@@ -204,7 +210,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
-    /** 查询活动账户的用户信息（姓名/积分）；会话失效只标记该账户，不清凭据 */
+    /** 查询活动账户的用户信息（姓名/积分）；失效时持久化失效标记（菜单红色标注） */
     private suspend fun refreshActiveUserInfo(account: StoredAccount?) {
         if (account == null || account.sesId.isBlank()) {
             _uiState.value = _uiState.value.copy(userName = "", remainIntegral = 0)
@@ -220,10 +226,14 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             val name = info.name ?: info.sensitive_name ?: ""
             val integral = info.remain_integral?.toIntOrNull() ?: 0
             _uiState.value = _uiState.value.copy(userName = name, remainIntegral = integral)
+            if (account.invalid) {
+                prefsManager.markAccountInvalid(account.loginName, false)
+            }
             if (name.isNotBlank()) {
-                // 查到昵称后回写账户（顶栏/列表显示用），不再触发查询（loginName 未变）
+                // 查到昵称后回写账户（顶栏/列表显示用），不重置校验标记
                 prefsManager.upsertAccount(
-                    account.loginName, account.sesId, account.userId, name
+                    account.loginName, account.sesId, account.userId, name,
+                    resetInvalid = false
                 )
                 if (integral > 0) {
                     addLog("当前账户: $name  积分: $integral")
@@ -233,7 +243,58 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             }
         } else {
             _uiState.value = _uiState.value.copy(userName = "", remainIntegral = 0)
+            prefsManager.markAccountInvalid(account.loginName, true)
             addLog("账户 ${displayName(account)} 会话已失效，请重新登录该账户")
+        }
+    }
+
+    /** 全量校验：逐账户 U005 校验并持久化失效标记。启动时后台执行一次 */
+    private var validatingAll = false
+    private fun validateAllAccounts() {
+        if (validatingAll) return
+        validatingAll = true
+        viewModelScope.launch {
+            try {
+                val accounts = prefsManager.accountsFlow.first().filter { it.sesId.isNotBlank() }
+                if (accounts.size <= 1) {
+                    // 单账户由活动账户查询覆盖
+                    return@launch
+                }
+                addLog("正在校验全部 ${accounts.size} 个账户会话...")
+                var invalidCount = 0
+                for (acc in accounts) {
+                    val info = try {
+                        apiService.getUserInfo(acc.loginName, acc.sesId)
+                    } catch (e: Exception) {
+                        addLog("校验 ${displayName(acc)} 失败: ${e.message}")
+                        continue
+                    } ?: continue
+                    if (info.result != "0") {
+                        prefsManager.markAccountInvalid(acc.loginName, true)
+                        invalidCount++
+                        addLog("账户 ${displayName(acc)} 会话已失效，请重新登录")
+                    } else {
+                        if (acc.invalid) {
+                            prefsManager.markAccountInvalid(acc.loginName, false)
+                        }
+                        // 顺带回写昵称（不重置校验标记由 markAccountInvalid 单独处理）
+                        val name = info.name ?: info.sensitive_name ?: ""
+                        if (name.isNotBlank() && name != acc.name) {
+                            prefsManager.upsertAccount(
+                                acc.loginName, acc.sesId, acc.userId, name,
+                                resetInvalid = false
+                            )
+                        }
+                    }
+                }
+                if (invalidCount > 0) {
+                    addLog("校验完成：$invalidCount 个账户失效（账户菜单中红色标注），重新登录即可恢复")
+                } else {
+                    addLog("校验完成：全部账户会话有效")
+                }
+            } finally {
+                validatingAll = false
+            }
         }
     }
 
@@ -279,6 +340,10 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             addLog("没有可用账户（ses_id 为空），请先登录")
             return
         }
+        if (acc.invalid) {
+            addLog("账户 ${displayName(acc)} 会话已失效，请先重新登录该账户")
+            return
+        }
         if (_uiState.value.schedulerRunning) return
         val config = UserConfig(
             loginName = acc.loginName,
@@ -303,6 +368,10 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         val acc = _uiState.value.activeAccount
         if (acc == null || acc.sesId.isBlank()) {
             addLog("没有可用账户，请先登录")
+            return
+        }
+        if (acc.invalid) {
+            addLog("账户 ${displayName(acc)} 会话已失效，请先重新登录该账户")
             return
         }
         if (_uiState.value.isDoingDailyTask) return

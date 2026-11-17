@@ -136,7 +136,9 @@ data class StoredAccount(
     val userId: String = "",
     val sesId: String = "",
     val name: String = "",
-    val savedAt: Long = 0
+    val savedAt: Long = 0,
+    /** 会话有效性：U005 校验 result != "0" 时置 true，重新登录后清除 */
+    val invalid: Boolean = false
 )
 
 data class UpdateInfo(
