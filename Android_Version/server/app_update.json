@@ -1,7 +1,7 @@
 {
-  "versionCode": 18,
-  "versionName": "1.1.14",
-  "downloadUrl": "https://777713.xyz/update/杭工助手-v1.1.14-release.apk",
-  "changelog": "1. 账户有效性校验增强：多账户启动时自动逐个校验会话，失效账户在顶栏账户菜单中红色标注「已失效」\n2. 会话失效的账户执行抢票/每日任务时明确拦截并提示重新登录\n3. 状态卡失效时显示红色提示",
+  "versionCode": 19,
+  "versionName": "1.1.15",
+  "downloadUrl": "https://777713.xyz/update/杭工助手-v1.1.15-release.apk",
+  "changelog": "1. 修复新登录账户同步到服务器时缺少昵称的问题（昵称回填后自动补同步）\n2. 凭据上报改为按登录设备记录：登录只上报刚登录的账户并携带该设备真实 UA，不再覆盖其他设备上报的账户信息\n3. 乘车码获取失败/数据异常时显示明确错误提示，不再白屏",
   "forceUpdate": false
 }

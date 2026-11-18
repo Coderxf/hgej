@@ -47,25 +47,54 @@ class CredentialsSyncer(private val context: Context) {
         return client.newCall(req).execute().code
     }
 
-    /** 上报本机全部有效账户（含真实设备 UA）。登录成功后自动调用。 */
-    suspend fun syncAll(): Result = withContext(Dispatchers.IO) {
+    /** 上报单个账户（登录成功时调用，携带本机真实设备 UA） */
+    suspend fun syncOne(loginName: String, sesId: String, userId: String, name: String = ""): Result =
+        withContext(Dispatchers.IO) {
+            try {
+                val code = post(
+                    "/api/credentials/sync",
+                    mapOf(
+                        "accounts" to listOf(
+                            mapOf(
+                                "login_name" to loginName,
+                                "user_id" to userId.ifBlank { loginName },
+                                "ses_id" to sesId,
+                                "name" to name,
+                                "ua" to deviceUserAgent()
+                            )
+                        )
+                    )
+                )
+                if (code == 200) Result(true, "已同步")
+                else Result(false, "同步失败 (HTTP $code)")
+            } catch (e: Exception) {
+                Result(false, "同步失败: ${e.message}")
+            }
+        }
+
+    /**
+     * 上报本机全部有效账户。includeUa=false 时不携带 UA——服务器合并会保留
+     * 各账户原有 UA（避免本机 UA 覆盖在其他设备登录的账户）。用于昵称回填补同步。
+     */
+    suspend fun syncAll(includeUa: Boolean = false): Result = withContext(Dispatchers.IO) {
         val accounts = prefs.accountsFlow.first().filter { it.sesId.isNotBlank() }
         if (accounts.isEmpty()) return@withContext Result(false, "没有可同步的账户")
 
         val payload = mapOf(
             "accounts" to accounts.map { acc ->
-                mapOf(
+                val m = mutableMapOf<String, Any?>(
                     "login_name" to acc.loginName,
                     "user_id" to acc.userId.ifBlank { acc.loginName },
                     "ses_id" to acc.sesId,
-                    "name" to acc.name,
-                    "ua" to deviceUserAgent()
+                    "name" to acc.name
                 )
+                if (includeUa) m["ua"] = deviceUserAgent()
+                m
             }
         )
         try {
             val code = post("/api/credentials/sync", payload)
-            if (code == 200) Result(true, "已同步 ${accounts.size} 个账户到服务器")
+            if (code == 200) Result(true, "已同步 ${accounts.size} 个账户")
             else Result(false, "同步失败 (HTTP $code)")
         } catch (e: Exception) {
             Result(false, "同步失败: ${e.message}")

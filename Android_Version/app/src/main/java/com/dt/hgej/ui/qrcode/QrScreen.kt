@@ -133,6 +133,14 @@ fun QrScreen(
             ) {
                 // QR Code
                 val qrCode = uiState.qrCode
+                if (qrCode == null) {
+                    // 加载完成但无数据（上游偶发失败）：给出明确空态而非白屏
+                    Text(
+                        "暂未获取到乘车码，请点击右上角刷新重试",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.error
+                    )
+                }
                 if (qrCode != null) {
                     Card(modifier = Modifier.fillMaxWidth()) {
                         Column(
@@ -166,6 +174,13 @@ fun QrScreen(
                                     bitmap = qrBitmap.asImageBitmap(),
                                     contentDescription = "乘车码",
                                     modifier = Modifier.size(200.dp)
+                                )
+                            } else {
+                                // 解码失败显式提示，不再白屏
+                                Text(
+                                    "乘车码数据异常，请点击右上角刷新重试",
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    color = MaterialTheme.colorScheme.error
                                 )
                             }
 

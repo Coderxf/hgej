@@ -122,12 +122,12 @@ class LoginViewModel(application: Application) : AndroidViewModel(application) {
                     state.captchaData?.imgUniCode ?: ""
                 )
                 result.onSuccess { loginResp ->
-                    prefsManager.upsertAccount(
-                        if (loginResp.login_name.isNullOrBlank()) state.phone else loginResp.login_name,
-                        loginResp.ses_id ?: "",
-                        if (loginResp.user_id.isNullOrBlank()) state.phone else loginResp.user_id
-                    )
-                    syncer.syncAll()   // 凭据同步开启时自动上报服务器（静默）
+                    val login = if (loginResp.login_name.isNullOrBlank()) state.phone else loginResp.login_name
+                    val ses = loginResp.ses_id ?: ""
+                    val uid = if (loginResp.user_id.isNullOrBlank()) state.phone else loginResp.user_id
+                    prefsManager.upsertAccount(login, ses, uid)
+                    // 只上报刚登录的这个账户（携带本机真实设备 UA），不影响其他设备登录的账户
+                    syncer.syncOne(login, ses, uid)
                     _uiState.value = _uiState.value.copy(
                         isLoading = false,
                         loginSuccess = true
@@ -164,12 +164,12 @@ class LoginViewModel(application: Application) : AndroidViewModel(application) {
                     }
                     val result = authRepository.smsLogin(state.phone, state.smsCode)
                     result.onSuccess { loginResp ->
-                        prefsManager.upsertAccount(
-                            if (loginResp.login_name.isNullOrBlank()) state.phone else loginResp.login_name,
-                            loginResp.ses_id ?: "",
-                            if (loginResp.user_id.isNullOrBlank()) state.phone else loginResp.user_id
-                        )
-                        syncer.syncAll()   // 凭据同步开启时自动上报服务器（静默）
+                        val login = if (loginResp.login_name.isNullOrBlank()) state.phone else loginResp.login_name
+                        val ses = loginResp.ses_id ?: ""
+                        val uid = if (loginResp.user_id.isNullOrBlank()) state.phone else loginResp.user_id
+                        prefsManager.upsertAccount(login, ses, uid)
+                        // 只上报刚登录的这个账户（携带本机真实设备 UA）
+                        syncer.syncOne(login, ses, uid)
                         _uiState.value = _uiState.value.copy(
                             isLoading = false,
                             loginSuccess = true

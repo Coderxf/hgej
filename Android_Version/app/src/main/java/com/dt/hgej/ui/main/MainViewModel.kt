@@ -230,11 +230,15 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 prefsManager.markAccountInvalid(account.loginName, false)
             }
             if (name.isNotBlank()) {
-                // 查到昵称后回写账户（顶栏/列表显示用），不重置校验标记
+                // 查到昵称后回写账户（顶栏/列表显示用），不重置校验标记；
+                // 昵称变化说明此前上报时无昵称，补同步一次（不带 UA，保留原设备 UA）
                 prefsManager.upsertAccount(
                     account.loginName, account.sesId, account.userId, name,
                     resetInvalid = false
                 )
+                if (name != account.name) {
+                    syncer.syncAll(includeUa = false)
+                }
                 if (integral > 0) {
                     addLog("当前账户: $name  积分: $integral")
                 } else {
@@ -292,6 +296,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 } else {
                     addLog("校验完成：全部账户会话有效")
                 }
+                // 校验过程中可能回填了昵称（登录上报时无名），补同步一次（不带 UA）
+                syncer.syncAll(includeUa = false)
             } finally {
                 validatingAll = false
             }
