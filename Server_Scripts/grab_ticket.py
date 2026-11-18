@@ -8,7 +8,7 @@ grab_ticket.py - 定时抢票：等下一个 7:00 / 11:30 / 17:00 卡点并发�
 
 环境变量（可选）：
   HANGGONG_EXCHANGE_ID   券种：9=2元 10=4元 11=6元（默认 11）
-  HANGGONG_COUNT         抢购次数 1~20，每账户各 N 次（默认 10）
+  HANGGONG_COUNT         抢购次数 1~20，每账户各 N 次（默认 3）
   HANGGONG_SLEEP         提交间隔秒 ≥0.15（默认 0.2）
 """
 
@@ -21,7 +21,7 @@ from hz_common import (HzApiError, exchange_once, log_print,
 LOGIN_NAME, ACC = None, os.environ.get("HANGGONG_ACC", "")
 SES_FALLBACK = os.environ.get(f"HANGGONG_SES_ID_{ACC}", "")
 EXCHANGE_ID = os.environ.get("HANGGONG_EXCHANGE_ID", "11")
-RUN_COUNT = int(os.environ.get("HANGGONG_COUNT", "10"))
+RUN_COUNT = int(os.environ.get("HANGGONG_COUNT", "3"))
 TIME_SLEEP = float(os.environ.get("HANGGONG_SLEEP", "0.2"))
 
 RUN_COUNT = max(1, min(RUN_COUNT, 20))

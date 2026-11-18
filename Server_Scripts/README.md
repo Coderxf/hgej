@@ -49,7 +49,7 @@ export HANGGONG_CRED_API="https://777713.xyz"
 | 变量 | 默认 | 说明 |
 |---|---|---|
 | `HANGGONG_EXCHANGE_ID` | 11 | 券种：9=2元 10=4元 11=6元 |
-| `HANGGONG_COUNT` | 10 | 抢购次数 1~20 |
+| `HANGGONG_COUNT` | 3 | 抢购次数 1~20 |
 | `HANGGONG_SLEEP` | 0.2 | 提交间隔秒 ≥0.15 |
 
 ## 部署到服务器
