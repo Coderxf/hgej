@@ -2,14 +2,17 @@
 grab_ticket.py - 定时抢票：等下一个 7:00 / 11:30 / 17:00 卡点并发兑换
 依赖同目录 hz_common.py。
 
-账户解析与 daily_task.py 相同（凭据中心拉取最新 ses_id，或传统 env ses_id）。
-目标时间按服务器时间校准（读响应头 Date + 半 RTT 补偿），
-本地时钟不准不影响卡点。
+抢票优化（2026-11-18）：
+1. 连接预热：距目标 5 秒时预付 TCP/TLS 握手，整点首飞不再付握手延迟
+2. 发射提前量：按时间同步测得的单程延迟提前发射，请求到达服务端恰好卡点
+3. 全量计时日志：同步 RTT/偏移、预热耗时、每发相对目标的偏差与耗时、
+   补试记录、抢后余额——留作每场复盘
 
 环境变量（可选）：
-  HANGGONG_EXCHANGE_ID   券种：9=2元 10=4元 11=6元（默认 11）
-  HANGGONG_COUNT         抢购次数 1~20，每账户各 N 次（默认 3）
-  HANGGONG_SLEEP         提交间隔秒 ≥0.15（默认 0.2）
+  HANGGONG_EXCHANGE_ID    券种：9=2元 10=4元 11=6元（默认 11）
+  HANGGONG_COUNT          抢购次数 1~20，每账户各 N 次（默认 3）
+  HANGGONG_SLEEP          提交间隔秒 ≥0.15（默认 0.2）
+  HANGGONG_FIRE_LEAD_MS   发射提前量毫秒（默认 80，按链路实测调整）
 """
 
 import os
@@ -24,27 +27,28 @@ SES_FALLBACK = os.environ.get(f"HANGGONG_SES_ID_{ACC}", "")
 EXCHANGE_ID = os.environ.get("HANGGONG_EXCHANGE_ID", "11")
 RUN_COUNT = int(os.environ.get("HANGGONG_COUNT", "3"))
 TIME_SLEEP = float(os.environ.get("HANGGONG_SLEEP", "0.2"))
+FIRE_LEAD_MS = int(os.environ.get("HANGGONG_FIRE_LEAD_MS", "80"))
 
 RUN_COUNT = max(1, min(RUN_COUNT, 20))
 TIME_SLEEP = max(TIME_SLEEP, 0.15)
 
 
 def sync_time_offset_seconds():
-    """返回 服务器时间-本地时间 偏移（秒）；失败回退 0。"""
+    """按服务器时间校准。返回 (偏移秒, 单程延迟毫秒, RTT毫秒)；失败回退 (0, 80, 0)。"""
     try:
         start = time.monotonic()
         session.get("https://app.hzgh.org.cn", timeout=(8, 20), verify=True)
-        rtt = (time.monotonic() - start) * 1000
+        rtt_ms = (time.monotonic() - start) * 1000
         from email.utils import parsedate_to_datetime
         resp = session.get("https://app.hzgh.org.cn", timeout=(8, 20), verify=True)
         server_ms = parsedate_to_datetime(resp.headers["Date"]).timestamp() * 1000
-        server_ms += rtt / 2
-        offset = (server_ms - time.time() * 1000) / 1000.0
-        log_print(f"服务器时间同步完成，本地偏移: {offset * 1000:+.0f}ms")
-        return offset
+        server_ms += rtt_ms / 2
+        offset_s = (server_ms - time.time() * 1000) / 1000.0
+        log_print(f"服务器时间同步完成，RTT {rtt_ms:.0f}ms，本地偏移 {offset_s * 1000:+.0f}ms")
+        return offset_s, rtt_ms / 2, rtt_ms
     except Exception as e:
         log_print(f"服务器时间同步失败，使用本地时间: {e.__class__.__name__}")
-        return 0.0
+        return 0.0, 80.0, 0
 
 
 def get_next_run_time():
@@ -58,24 +62,40 @@ def get_next_run_time():
     return datetime.combine(today + timedelta(days=1), datetime.strptime("07:00", "%H:%M").time())
 
 
-def wait_until_target(target, offset_s=0.0):
-    """按服务器时间卡点等待（梯度休眠）。"""
+def wait_until_target(target, offset_s, fire_lead_ms):
+    """按服务器时间卡点等待。
+
+    - 5 秒整时做一次连接预热（session 上发一个轻量请求，把可能断开的
+      TCP/TLS 连接重新握好，整点首飞不再付握手成本）
+    - 剩余 fire_lead_ms 时直接返回：由调用方立刻发射，
+      请求经单程延迟恰好到达服务端于目标时刻
+    返回 (是否等到, 实际提前量ms)。
+    """
+    warmed = False
     while True:
         now_ms = (time.time() + offset_s) * 1000
         target_ms = target.timestamp() * 1000
-        diff_s = (target_ms - now_ms) / 1000.0
-        if diff_s <= 0:
-            return
-        if diff_s > 3600:
+        diff_ms = target_ms - now_ms
+        if diff_ms <= fire_lead_ms:
+            return True, max(0, -diff_ms)   # 实际提前发射了多少
+        if diff_ms > 5000 and not warmed:
+            try:
+                t0 = time.monotonic()
+                session.get("https://app.hzgh.org.cn", timeout=(8, 20), verify=True)
+                log_print(f"连接预热完成（{time.monotonic() - t0:.0f}ms），整点首飞免握手")
+            except Exception as e:
+                log_print(f"连接预热失败: {e.__class__.__name__}")
+            warmed = True
+        if diff_ms > 3600:
             time.sleep(300)
-        elif diff_s > 600:
+        elif diff_ms > 600:
             time.sleep(60)
-        elif diff_s > 60:
+        elif diff_ms > 60:
             time.sleep(30)
-        elif diff_s > 1:
+        elif diff_ms > 2000:
             time.sleep(0.5)
         else:
-            time.sleep(0.05)
+            time.sleep(0.01)
 
 
 def _is_transient(msg):
@@ -103,7 +123,7 @@ def exchange_with_retry():
 
 
 def query_award_balance():
-    """查询当前券种可用余额，用于确认超时请求是否实际成功。返回数量或 None。"""
+    """查询当前券种可用余额。返回数量或 None。"""
     award_type = str(max(1, min(3, int(EXCHANGE_ID) - 8)))   # 9→1(2元) 10→2(4元) 11→3(6元)
     try:
         from hz_common import signed_post
@@ -121,28 +141,36 @@ def query_award_balance():
         return None
 
 
-def job():
-    log_print(f"开始抢票：{RUN_COUNT} 次，间隔 {TIME_SLEEP}s，券种 {EXCHANGE_ID}")
+def job(target, offset_s):
+    shots = []   # [(轮次, 相对目标ms, 耗时ms, 结果文本)]
     success = 0
+    target_ms = target.timestamp() * 1000
+
     for i in range(RUN_COUNT):
+        send_local = time.time() * 1000
+        rel_ms = (send_local + offset_s * 1000) - target_ms   # 发射时服务器时间相对目标
         data, err = exchange_with_retry()
+        cost_ms = time.time() * 1000 - send_local
         if err is None:
             success += 1
-            log_print(f"[{i + 1}] {data.get('msg') or '无响应'}")
+            msg = data.get("msg") or "无响应"
         else:
-            log_print(f"[{i + 1}] 失败: {err}")
+            msg = f"失败: {err}"
+        shots.append((i + 1, rel_ms, cost_ms, msg))
+        log_print(f"[{i + 1}/{RUN_COUNT}] 发送于目标{rel_ms:+.0f}ms 耗时{cost_ms:.0f}ms → {msg}")
         if i < RUN_COUNT - 1:
             time.sleep(TIME_SLEEP)
 
-    log_print(f"抢票请求全部完成（成功响应 {success}/{RUN_COUNT}，超时的请求可能已在服务端排队）")
+    log_print("—— 本场统计 ——")
+    for (n, rel, cost, msg) in shots:
+        log_print(f"第{n}发: 目标{rel:+.0f}ms 耗时{cost:.0f}ms → {msg}")
     balance = query_award_balance()
     if balance is not None:
-        log_print(f"抢后余额确认：当前券种可用 {balance} 张（含本次抢到的）")
-    log_print("抢票任务完成")
+        log_print(f"抢后余额确认：当前券种可用 {balance} 张")
+    log_print(f"抢票任务完成（成功响应 {success}/{RUN_COUNT}）")
 
 
 def main():
-    from datetime import datetime
     global LOGIN_NAME, USER_ID, SES_ID
 
     login_name, acc = None, os.environ.get("HANGGONG_ACC", "")
@@ -174,11 +202,17 @@ def main():
         raise SystemExit("会话已失效，请在安卓 App 或网页版重新登录该手机号")
     log_print(f"会话有效（来源: {source}），用户: {info.get('name') or '未知'}")
 
-    offset = sync_time_offset_seconds()
+    offset_s, one_way_ms, _ = sync_time_offset_seconds()
     target = get_next_run_time()
+    # 发射提前量：单程延迟 与 配置值 取大（确保到达≈目标时刻）
+    lead = max(FIRE_LEAD_MS, one_way_ms)
     log_print(f"程序已启动，将在 {target} 执行兑换，共 {RUN_COUNT} 次，间隔 {TIME_SLEEP}s")
-    wait_until_target(target, offset)
-    job()
+    log_print(f"发射提前量 {lead:.0f}ms（单程延迟 {one_way_ms:.0f}ms）")
+    ok, actual_lead = wait_until_target(target, offset_s, lead)
+    if not ok:
+        return
+    log_print(f"开抢（实际提前 {actual_lead:.0f}ms 发射）")
+    job(target, offset_s)
 
 
 if __name__ == "__main__":
