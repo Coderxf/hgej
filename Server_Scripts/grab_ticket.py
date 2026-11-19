@@ -18,6 +18,7 @@ from datetime import datetime, timedelta
 
 from hz_common import (HzApiError, exchange_once, log_print,
                        query_user_info, resolve_ses_id, session)
+
 LOGIN_NAME, ACC = None, os.environ.get("HANGGONG_ACC", "")
 SES_FALLBACK = os.environ.get(f"HANGGONG_SES_ID_{ACC}", "")
 EXCHANGE_ID = os.environ.get("HANGGONG_EXCHANGE_ID", "11")
@@ -77,18 +78,66 @@ def wait_until_target(target, offset_s=0.0):
             time.sleep(0.05)
 
 
-def job():
-    log_print(f"开始并发兑换：{RUN_COUNT} 次，间隔 {TIME_SLEEP}s，券种 {EXCHANGE_ID}")
-    results = []
-    for i in range(RUN_COUNT):
+def _is_transient(msg):
+    """瞬时失败（超时/网关 5xx）：值得立即补试一次"""
+    m = msg.lower()
+    return ("readtimeout" in m or "connecttimeout" in m or "sockettimeout" in m
+            or "http 50" in m)
+
+
+def exchange_with_retry():
+    """单次抢票目标：超时/5xx 自动补试一次（1 秒后），业务失败（如被抢光）不重试。
+    返回 (结果dict或None, 最终错误或None)。"""
+    last_err = None
+    for attempt in range(2):
         try:
-            data = exchange_once(LOGIN_NAME, USER_ID, SES_ID, EXCHANGE_ID)
-            results.append(f"[{i + 1}] {data.get('msg') or data}")
+            return exchange_once(LOGIN_NAME, USER_ID, SES_ID, EXCHANGE_ID), None
         except HzApiError as e:
-            results.append(f"[{i + 1}] 失败: {e}")
-        log_print(results[-1])
+            last_err = str(e)
+            if attempt == 0 and _is_transient(last_err):
+                log_print("瞬时失败（超时/网关过载），1 秒后补试...")
+                time.sleep(1)
+                continue
+            return None, last_err
+    return None, last_err
+
+
+def query_award_balance():
+    """查询当前券种可用余额，用于确认超时请求是否实际成功。返回数量或 None。"""
+    award_type = str(max(1, min(3, int(EXCHANGE_ID) - 8)))   # 9→1(2元) 10→2(4元) 11→3(6元)
+    try:
+        from hz_common import signed_post
+        d = signed_post(
+            "/unionApp/interf/front/OL/OL83",
+            {
+                "login_name": LOGIN_NAME, "user_id": USER_ID, "ses_id": SES_ID,
+                "use_state": "1", "award_type": award_type,
+                "page_size": 10, "page_num": 1,
+            },
+        )
+        key = f"num_{award_type}"
+        return int(d.get(key) or 0)
+    except Exception:
+        return None
+
+
+def job():
+    log_print(f"开始抢票：{RUN_COUNT} 次，间隔 {TIME_SLEEP}s，券种 {EXCHANGE_ID}")
+    success = 0
+    for i in range(RUN_COUNT):
+        data, err = exchange_with_retry()
+        if err is None:
+            success += 1
+            log_print(f"[{i + 1}] {data.get('msg') or '无响应'}")
+        else:
+            log_print(f"[{i + 1}] 失败: {err}")
         if i < RUN_COUNT - 1:
             time.sleep(TIME_SLEEP)
+
+    log_print(f"抢票请求全部完成（成功响应 {success}/{RUN_COUNT}，超时的请求可能已在服务端排队）")
+    balance = query_award_balance()
+    if balance is not None:
+        log_print(f"抢后余额确认：当前券种可用 {balance} 张（含本次抢到的）")
     log_print("抢票任务完成")
 
 
