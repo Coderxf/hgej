@@ -142,27 +142,36 @@ def query_award_balance():
 
 
 def job(target, offset_s):
-    shots = []   # [(轮次, 相对目标ms, 耗时ms, 结果文本)]
-    success = 0
-    target_ms = target.timestamp() * 1000
+    """并发发射：submit 按间隔节流，但每发独立线程执行——
+    上一发 ReadTimeout(20s) 不再阻塞后续发射把窗口外的机会挤掉。"""
+    from concurrent.futures import ThreadPoolExecutor
 
-    for i in range(RUN_COUNT):
+    shots = []   # [(轮次, 相对目标ms, 耗时ms, 结果文本)]
+    target_ms = target.timestamp() * 1000
+    lock = __import__("threading").Lock()
+
+    def worker(i):
         send_local = time.time() * 1000
         rel_ms = (send_local + offset_s * 1000) - target_ms   # 发射时服务器时间相对目标
         data, err = exchange_with_retry()
         cost_ms = time.time() * 1000 - send_local
-        if err is None:
-            success += 1
-            msg = data.get("msg") or "无响应"
-        else:
-            msg = f"失败: {err}"
-        shots.append((i + 1, rel_ms, cost_ms, msg))
-        log_print(f"[{i + 1}/{RUN_COUNT}] 发送于目标{rel_ms:+.0f}ms 耗时{cost_ms:.0f}ms → {msg}")
-        if i < RUN_COUNT - 1:
-            time.sleep(TIME_SLEEP)
+        msg = (data.get("msg") or "无响应") if err is None else f"失败: {err}"
+        with lock:
+            shots.append((i + 1, rel_ms, cost_ms, msg))
+            log_print(f"[{i + 1}/{RUN_COUNT}] 发送于目标{rel_ms:+.0f}ms 耗时{cost_ms:.0f}ms → {msg}")
+        return err is None
 
-    log_print("—— 本场统计 ——")
-    for (n, rel, cost, msg) in shots:
+    log_print(f"开抢：{RUN_COUNT} 发（提交间隔 {TIME_SLEEP}s，各发独立线程含补试）")
+    with ThreadPoolExecutor(max_workers=RUN_COUNT) as ex:
+        futures = []
+        for i in range(RUN_COUNT):
+            futures.append(ex.submit(worker, i + 1))
+            if i < RUN_COUNT - 1:
+                time.sleep(TIME_SLEEP)
+        success = sum(f.result() for f in futures)
+
+    log_print("—— 本场统计（按发射序） ——")
+    for (n, rel, cost, msg) in sorted(shots):
         log_print(f"第{n}发: 目标{rel:+.0f}ms 耗时{cost:.0f}ms → {msg}")
     balance = query_award_balance()
     if balance is not None:
