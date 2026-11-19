@@ -34,21 +34,39 @@ TIME_SLEEP = max(TIME_SLEEP, 0.15)
 
 
 def sync_time_offset_seconds():
-    """按服务器时间校准。返回 (偏移秒, 单程延迟毫秒, RTT毫秒)；失败回退 (0, 80, 0)。"""
-    try:
-        start = time.monotonic()
-        session.get("https://app.hzgh.org.cn", timeout=(8, 20), verify=True)
-        rtt_ms = (time.monotonic() - start) * 1000
-        from email.utils import parsedate_to_datetime
-        resp = session.get("https://app.hzgh.org.cn", timeout=(8, 20), verify=True)
-        server_ms = parsedate_to_datetime(resp.headers["Date"]).timestamp() * 1000
-        server_ms += rtt_ms / 2
-        offset_s = (server_ms - time.time() * 1000) / 1000.0
-        log_print(f"服务器时间同步完成，RTT {rtt_ms:.0f}ms，本地偏移 {offset_s * 1000:+.0f}ms")
-        return offset_s, rtt_ms / 2, rtt_ms
-    except Exception as e:
-        log_print(f"服务器时间同步失败，使用本地时间: {e.__class__.__name__}")
+    """按服务器时间校准（多次采样提升精度）。
+
+    HTTP Date 头只有秒级精度（服务器生成时刻向下取整），单次采样残余
+    误差均匀分布 0~1000ms。改进：
+    - 采样 3 次，取 RTT 最小的样本（网络抖动最小）
+    - offset 加 500ms 截断中点补偿（期望对准真实相位）
+    返回 (偏移秒, 单程延迟毫秒, RTT毫秒)；失败回退 (0, 80, 0)。
+    """
+    best = None   # (rtt_ms, offset_s)
+    from email.utils import parsedate_to_datetime
+    for i in range(3):
+        try:
+            start = time.monotonic()
+            session.get("https://app.hzgh.org.cn", timeout=(8, 20), verify=True)
+            rtt_ms = (time.monotonic() - start) * 1000
+            resp = session.get("https://app.hzgh.org.cn", timeout=(8, 20), verify=True)
+            date_header = resp.headers.get("Date")
+            if not date_header:
+                continue
+            server_ms = parsedate_to_datetime(date_header).timestamp() * 1000
+            server_ms += rtt_ms / 2 + 500   # 半RTT补偿 + Date秒级截断中点补偿
+            offset_s = (server_ms - time.time() * 1000) / 1000.0
+            log_print(f"  采样{i + 1}: RTT {rtt_ms:.0f}ms 偏移 {offset_s * 1000:+.0f}ms")
+            if best is None or rtt_ms < best[0]:
+                best = (rtt_ms, offset_s)
+        except Exception as e:
+            log_print(f"  采样{i + 1}失败: {e.__class__.__name__}")
+    if best is None:
+        log_print("服务器时间同步失败，使用本地时间")
         return 0.0, 80.0, 0
+    rtt_ms, offset_s = best
+    log_print(f"采用最优样本: RTT {rtt_ms:.0f}ms，本地偏移 {offset_s * 1000:+.0f}ms（含截断中点补偿）")
+    return offset_s, rtt_ms / 2, rtt_ms
 
 
 def get_next_run_time():
