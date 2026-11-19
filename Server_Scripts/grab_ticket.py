@@ -33,16 +33,94 @@ RUN_COUNT = max(1, min(RUN_COUNT, 20))
 TIME_SLEEP = max(TIME_SLEEP, 0.15)
 
 
-def sync_time_offset_seconds():
-    """按服务器时间校准（多次采样提升精度）。
+def phase_scan_offset():
+    """秒跳变扫描校准（毫秒级）。
 
-    HTTP Date 头只有秒级精度（服务器生成时刻向下取整），单次采样残余
-    误差均匀分布 0~1000ms。改进：
-    - 采样 3 次，取 RTT 最小的样本（网络抖动最小）
-    - offset 加 500ms 截断中点补偿（期望对准真实相位）
-    返回 (偏移秒, 单程延迟毫秒, RTT毫秒)；失败回退 (0, 80, 0)。
+    原理：HTTP Date 头只有秒级精度（生成时刻向下取整），单次采样残余
+    误差 ±0.5s 无法通过加中点消除。改为密集观测 Date **跳秒瞬间**：
+    每个响应的 Date 值从 S 变为 S+1 时，其生成时刻恰好跨入服务器
+    第 S+1 秒边界——该边界对应的本地时刻即服务器时钟与本地时钟的
+    相位锚点（误差 ≈ 响应间隔/2 + RTT 对称性偏差）。
+    4 线程并发密集采样 2.6 秒，响应间隔 ~25ms，双跳变点平均后 ±15ms 级。
     """
-    best = None   # (rtt_ms, offset_s)
+    import threading
+
+    results = []            # (t_mid_monotonic_ms, date_second)
+    lock = threading.Lock()
+    stop = threading.Event()
+    BASE_URL_SCAN = "https://app.hzgh.org.cn"
+
+    def sampler():
+        from email.utils import parsedate_to_datetime
+        while not stop.is_set():
+            try:
+                e0 = time.time() * 1000
+                r = session.get(BASE_URL_SCAN, timeout=(8, 20), verify=True)
+                e1 = time.time() * 1000
+                dh = r.headers.get("Date")
+                if dh:
+                    sec = int(parsedate_to_datetime(dh).timestamp())
+                    with lock:
+                        results.append(((e0 + e1) / 2, sec))   # epoch 毫秒
+            except Exception:
+                pass
+
+    threads = [threading.Thread(target=sampler, daemon=True) for _ in range(4)]
+    for t in threads:
+        t.start()
+    time.sleep(2.6)
+    stop.set()
+    for t in threads:
+        t.join(timeout=5)
+
+    results.sort()
+    if len(results) < 30:
+        log_print(f"跳变扫描样本不足（{len(results)}），改用 Date 中点法")
+        return None
+
+    # 找跳变点：Date 秒值递增的时刻
+    jumps = []   # [(S_new_epoch_ms, 边界对应本地 epoch ms)]
+    for i in range(1, len(results)):
+        s_prev, s_curr = results[i - 1][1], results[i][1]
+        if s_curr != s_prev:
+            # 跳变发生在 (t_mid[i-1], t_mid[i]] 区间内，取中点估计边界
+            boundary_local = (results[i - 1][0] + results[i][0]) / 2
+            jumps.append((s_curr * 1000, boundary_local, s_curr - s_prev))
+
+    log_print(f"扫描样本 {len(results)} 个，捕获跳变 {len(jumps)} 次")
+    if not jumps:
+        return None
+
+    # 锚点合并：相邻锚点 epoch 差应≈1000ms；跨秒异常（响应间隔内跨了
+    # 多个秒界）的锚点剔除——以首个锚点为基准
+    offsets = [jumps[0][0] - jumps[0][1]]
+    for i in range(1, len(jumps)):
+        span = jumps[i][0] - jumps[i - 1][0]
+        if not (900 <= span <= 1100):
+            log_print(f"  跳变间隔 {span:.0f}ms 异常，剔除该锚点")
+            continue
+        offsets.append(jumps[i][0] - jumps[i][1])
+    offset_ms = sum(offsets) / len(offsets)
+    spread = (max(offsets) - min(offsets)) if len(offsets) > 1 else 0
+    log_print(f"有效锚点 {len(offsets)} 个，偏移 {offset_ms:+.0f}ms（多锚点极差 {spread:.0f}ms）")
+    return offset_ms / 1000.0
+
+
+def sync_time_offset_seconds():
+    """校准总入口：优先秒跳变扫描（±15ms 级），失败回退 Date 采样（±0.5s）。"""
+    try:
+        off = phase_scan_offset()
+        if off is not None:
+            # 单程延迟用一次轻量 RTT 估算
+            start = time.monotonic()
+            session.get("https://app.hzgh.org.cn", timeout=(8, 20), verify=True)
+            rtt = (time.monotonic() - start) * 1000
+            log_print(f"毫秒级对齐完成（跳变扫描），单程延迟 {rtt / 2:.0f}ms")
+            return off, rtt / 2, rtt
+    except Exception as e:
+        log_print(f"跳变扫描异常: {e.__class__.__name__}")
+    # 回退：原 Date 采样法
+    best = None
     from email.utils import parsedate_to_datetime
     for i in range(3):
         try:
@@ -54,7 +132,7 @@ def sync_time_offset_seconds():
             if not date_header:
                 continue
             server_ms = parsedate_to_datetime(date_header).timestamp() * 1000
-            server_ms += rtt_ms / 2 + 500   # 半RTT补偿 + Date秒级截断中点补偿
+            server_ms += rtt_ms / 2 + 500
             offset_s = (server_ms - time.time() * 1000) / 1000.0
             log_print(f"  采样{i + 1}: RTT {rtt_ms:.0f}ms 偏移 {offset_s * 1000:+.0f}ms")
             if best is None or rtt_ms < best[0]:
