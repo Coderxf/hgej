@@ -311,6 +311,11 @@ def main():
     remaining_s = (target.timestamp() * 1000 - time.time() * 1000) / 1000
     if remaining_s > 60:
         scan = phase_scan_offset()
+        if scan is None:
+            # 首次扫描被污染（如抢票高峰上游拥堵），隔 2 秒重扫一次
+            log_print("首次扫描结果被弃用，2 秒后重扫...")
+            time.sleep(2)
+            scan = phase_scan_offset(max_seconds=4.0)
         if scan is not None:
             offset_s, _ = scan
             one_way_ms, _rtt = 0, 0
