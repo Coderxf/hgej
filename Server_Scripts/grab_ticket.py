@@ -33,7 +33,7 @@ RUN_COUNT = max(1, min(RUN_COUNT, 20))
 TIME_SLEEP = max(TIME_SLEEP, 0.15)
 
 
-def phase_scan_offset():
+def phase_scan_offset(max_seconds=2.6):
     """秒跳变扫描校准（毫秒级）。
 
     原理：HTTP Date 头只有秒级精度（生成时刻向下取整），单次采样残余
@@ -41,11 +41,14 @@ def phase_scan_offset():
     每个响应的 Date 值从 S 变为 S+1 时，其生成时刻恰好跨入服务器
     第 S+1 秒边界——该边界对应的本地时刻即服务器时钟与本地时钟的
     相位锚点（误差 ≈ 响应间隔/2 + RTT 对称性偏差）。
-    4 线程并发密集采样 2.6 秒，响应间隔 ~25ms，双跳变点平均后 ±15ms 级。
+    4 线程并发密集采样，响应超时收紧至 3s（防慢响应拖垮扫描节奏）。
+
+    返回 (offset_ms, spread_ms) 或 None（样本不足/多锚点极差>150ms
+    判定为锚点污染——污染偏移会让卡点偏移数百秒，必须弃用回退）。
     """
     import threading
 
-    results = []            # (t_mid_monotonic_ms, date_second)
+    results = []            # [(本地epoch毫秒中点, date_second)]
     lock = threading.Lock()
     stop = threading.Event()
     BASE_URL_SCAN = "https://app.hzgh.org.cn"
@@ -55,7 +58,7 @@ def phase_scan_offset():
         while not stop.is_set():
             try:
                 e0 = time.time() * 1000
-                r = session.get(BASE_URL_SCAN, timeout=(8, 20), verify=True)
+                r = session.get(BASE_URL_SCAN, timeout=(2, 3), verify=True)
                 e1 = time.time() * 1000
                 dh = r.headers.get("Date")
                 if dh:
@@ -68,14 +71,14 @@ def phase_scan_offset():
     threads = [threading.Thread(target=sampler, daemon=True) for _ in range(4)]
     for t in threads:
         t.start()
-    time.sleep(2.6)
+    time.sleep(max_seconds)
     stop.set()
     for t in threads:
-        t.join(timeout=5)
+        t.join(timeout=4)
 
     results.sort()
     if len(results) < 30:
-        log_print(f"跳变扫描样本不足（{len(results)}），改用 Date 中点法")
+        log_print(f"跳变扫描样本不足（{len(results)}）")
         return None
 
     # 找跳变点：Date 秒值递增的时刻
@@ -103,23 +106,15 @@ def phase_scan_offset():
     offset_ms = sum(offsets) / len(offsets)
     spread = (max(offsets) - min(offsets)) if len(offsets) > 1 else 0
     log_print(f"有效锚点 {len(offsets)} 个，偏移 {offset_ms:+.0f}ms（多锚点极差 {spread:.0f}ms）")
-    return offset_ms / 1000.0
+    if spread > 150:
+        log_print("  ⚠️ 多锚点极差超 150ms，判定锚点污染，弃用扫描结果回退快速校准")
+        return None
+    return offset_ms, spread
 
 
-def sync_time_offset_seconds():
-    """校准总入口：优先秒跳变扫描（±15ms 级），失败回退 Date 采样（±0.5s）。"""
-    try:
-        off = phase_scan_offset()
-        if off is not None:
-            # 单程延迟用一次轻量 RTT 估算
-            start = time.monotonic()
-            session.get("https://app.hzgh.org.cn", timeout=(8, 20), verify=True)
-            rtt = (time.monotonic() - start) * 1000
-            log_print(f"毫秒级对齐完成（跳变扫描），单程延迟 {rtt / 2:.0f}ms")
-            return off, rtt / 2, rtt
-    except Exception as e:
-        log_print(f"跳变扫描异常: {e.__class__.__name__}")
-    # 回退：原 Date 采样法
+def fast_sync_offset():
+    """快速 Date 采样校准（秒级精度 ±0.5s，含截断中点补偿）。
+    用于距档位窗口较近、无法承担完整扫描耗时的场景。"""
     best = None
     from email.utils import parsedate_to_datetime
     for i in range(3):
@@ -134,7 +129,7 @@ def sync_time_offset_seconds():
             server_ms = parsedate_to_datetime(date_header).timestamp() * 1000
             server_ms += rtt_ms / 2 + 500
             offset_s = (server_ms - time.time() * 1000) / 1000.0
-            log_print(f"  采样{i + 1}: RTT {rtt_ms:.0f}ms 偏移 {offset_s * 1000:+.0f}ms")
+            log_print(f"  快速采样{i + 1}: RTT {rtt_ms:.0f}ms 偏移 {offset_s * 1000:+.0f}ms")
             if best is None or rtt_ms < best[0]:
                 best = (rtt_ms, offset_s)
         except Exception as e:
@@ -143,7 +138,7 @@ def sync_time_offset_seconds():
         log_print("服务器时间同步失败，使用本地时间")
         return 0.0, 80.0, 0
     rtt_ms, offset_s = best
-    log_print(f"采用最优样本: RTT {rtt_ms:.0f}ms，本地偏移 {offset_s * 1000:+.0f}ms（含截断中点补偿）")
+    log_print(f"快速校准采用最优样本: RTT {rtt_ms:.0f}ms，本地偏移 {offset_s * 1000:+.0f}ms")
     return offset_s, rtt_ms / 2, rtt_ms
 
 
@@ -307,10 +302,42 @@ def main():
         raise SystemExit("会话已失效，请在安卓 App 或网页版重新登录该手机号")
     log_print(f"会话有效（来源: {source}），用户: {info.get('name') or '未知'}")
 
-    offset_s, one_way_ms, _ = sync_time_offset_seconds()
+    # 先定档位再校准：校准/预热耗时可能吃掉档位窗口（11-20 fff2 场教训），
+    # 档位必须先锁定；错过后有 30s 宽限护栏（见下方 delta 判定）
     target = get_next_run_time()
-    # 发射提前量：单程延迟 与 配置值 取大（确保到达≈目标时刻）
+
+    # 档位窗口充足（>60s）→ 完整跳变扫描（毫秒级，含质量熔断）；
+    # 窗口紧张 → 快速 Date 法（秒级）+ 靠宽限护栏兜底
+    remaining_s = (target.timestamp() * 1000 - time.time() * 1000) / 1000
+    if remaining_s > 60:
+        scan = phase_scan_offset()
+        if scan is not None:
+            offset_s, _ = scan
+            one_way_ms, _rtt = 0, 0
+            # 扫描后重算偏移下的单程延迟（一次轻量 RTT）
+            start = time.monotonic()
+            session.get("https://app.hzgh.org.cn", timeout=(8, 20), verify=True)
+            one_way_ms = (time.monotonic() - start) * 1000 / 2
+            log_print(f"毫秒级对齐完成（跳变扫描），单程延迟 {one_way_ms:.0f}ms")
+        else:
+            offset_s, one_way_ms, _ = fast_sync_offset()
+    else:
+        log_print("距档位窗口较近，使用快速校准")
+        offset_s, one_way_ms, _ = fast_sync_offset()
     lead = max(FIRE_LEAD_MS, one_way_ms)
+
+    # 宽限护栏：校准耗时越过整点时，30 秒内仍立即开抢；超过则明确退出（不挂 24 小时）
+    GRACE_MS = 30000
+    now_srv_ms = time.time() * 1000 + offset_s * 1000
+    delta_ms = target.timestamp() * 1000 - now_srv_ms
+    if delta_ms <= -GRACE_MS:
+        raise SystemExit(
+            f"本场档位 {target} 已错过（超 30s 宽限），退出。"
+            "下一档位将自动尝试，无需干预"
+        )
+    if delta_ms <= 0:
+        log_print(f"已错过整点但在 {GRACE_MS // 1000}s 宽限期内，立即开抢")
+
     log_print(f"程序已启动，将在 {target} 执行兑换，共 {RUN_COUNT} 次，间隔 {TIME_SLEEP}s")
     log_print(f"发射提前量 {lead:.0f}ms（单程延迟 {one_way_ms:.0f}ms）")
     ok, actual_lead = wait_until_target(target, offset_s, lead)
