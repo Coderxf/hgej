@@ -342,14 +342,36 @@ def main():
         job(None, 0.0)
         return
 
-    # 先定档位再校准：校准/预热耗时可能吃掉档位窗口（11-20 fff2 场教训），
-    # 档位必须先锁定；错过后有 30s 宽限护栏（见下方 delta 判定）
+    # 快速校准（±0.5s）先粗算档位距离——判断是否在可执行窗口内
+    offset_s, one_way_ms, _ = fast_sync_offset()
     target = get_next_run_time()
 
-    # 档位窗口充足（>60s）→ 完整跳变扫描（毫秒级，含质量熔断）；
-    # 窗口紧张 → 快速 Date 法（秒级）+ 靠宽限护栏兜底
-    remaining_s = (target.timestamp() * 1000 - time.time() * 1000) / 1000
-    if remaining_s > 60:
+    # 智能窗口判定：只处理"当前时刻周围"的档位，不挂长等待
+    # - 档位前 ≤ MAX_WAIT_S（定时任务提前 15~25s 启动的等待量）→ 等待并执行
+    # - 档位后一律跳过（放券数秒内即空，过点抢不到，无宽限）
+    # - 其余（如中午手动执行距 17:00 还有数小时）→ 跳过退出
+    MAX_WAIT_MS = int(os.environ.get("HANGGONG_MAX_WAIT_S", "60")) * 1000
+    delta_ms = target.timestamp() * 1000 - (time.time() * 1000 + offset_s * 1000)
+
+    if delta_ms > MAX_WAIT_MS:
+        delta_ms = int(delta_ms)
+        remain_desc = f"{delta_ms // 3600000}h{(delta_ms % 3600000) // 60000:02d}m" \
+            if delta_ms >= 3600000 else f"{delta_ms / 1000:.0f}s"
+        raise SystemExit(
+            f"距下一档位 {target} 还有 {remain_desc}，超出可执行窗口"
+            f"（档位前 ≤{MAX_WAIT_MS // 1000}s）——跳过，不挂长等待。\n"
+            f"手动提前触发请在该档位前 {MAX_WAIT_MS // 1000}s 内运行；"
+            f"需要立即发射请用 now 参数"
+        )
+    if delta_ms < 0:
+        raise SystemExit(
+            f"本场档位 {target} 已过（{-delta_ms / 1000:.0f}s），跳过。"
+            "下一档位将自动尝试，无需干预"
+        )
+
+    # 窗口内：距档位 >8s 时做毫秒级跳变扫描精校准（含污染熔断+重扫），
+    # 否则沿用快速校准结果
+    if delta_ms > 8000:
         scan = phase_scan_offset()
         if scan is None:
             # 首次扫描被污染（如抢票高峰上游拥堵），隔 2 秒重扫一次
@@ -358,30 +380,11 @@ def main():
             scan = phase_scan_offset(max_seconds=4.0)
         if scan is not None:
             offset_s, _ = scan
-            one_way_ms, _rtt = 0, 0
-            # 扫描后重算偏移下的单程延迟（一次轻量 RTT）
             start = time.monotonic()
             session.get("https://app.hzgh.org.cn", timeout=(8, 20), verify=True)
             one_way_ms = (time.monotonic() - start) * 1000 / 2
             log_print(f"毫秒级对齐完成（跳变扫描），单程延迟 {one_way_ms:.0f}ms")
-        else:
-            offset_s, one_way_ms, _ = fast_sync_offset()
-    else:
-        log_print("距档位窗口较近，使用快速校准")
-        offset_s, one_way_ms, _ = fast_sync_offset()
     lead = max(FIRE_LEAD_MS, one_way_ms)
-
-    # 宽限护栏：校准耗时越过整点时，30 秒内仍立即开抢；超过则明确退出（不挂 24 小时）
-    GRACE_MS = 30000
-    now_srv_ms = time.time() * 1000 + offset_s * 1000
-    delta_ms = target.timestamp() * 1000 - now_srv_ms
-    if delta_ms <= -GRACE_MS:
-        raise SystemExit(
-            f"本场档位 {target} 已错过（超 30s 宽限），退出。"
-            "下一档位将自动尝试，无需干预"
-        )
-    if delta_ms <= 0:
-        log_print(f"已错过整点但在 {GRACE_MS // 1000}s 宽限期内，立即开抢")
 
     log_print(f"程序已启动，将在 {target} 执行兑换，共 {RUN_COUNT} 次，间隔 {TIME_SLEEP}s")
     log_print(f"发射提前量 {lead:.0f}ms（单程延迟 {one_way_ms:.0f}ms）")
