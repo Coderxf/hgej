@@ -13,9 +13,16 @@ grab_ticket.py - 定时抢票：等下一个 7:00 / 11:30 / 17:00 卡点并发�
   HANGGONG_COUNT          抢购次数 1~20，每账户各 N 次（默认 3）
   HANGGONG_SLEEP          提交间隔秒 ≥0.15（默认 0.2）
   HANGGONG_FIRE_LEAD_MS   发射提前量毫秒（默认 80，按链路实测调整）
+
+用法：
+  python3 grab_ticket.py          定时模式：锁定下一档位（7:00/11:30/17:00），
+                                  卡点等待后发射（青龙定时任务用）
+  python3 grab_ticket.py now      立即模式：跳过等待直接发射（手动补抢/
+                                  链路验证用）
 """
 
 import os
+import sys
 import time
 from datetime import datetime, timedelta
 
@@ -257,22 +264,25 @@ def query_award_balance():
 
 def job(target, offset_s):
     """并发发射：submit 按间隔节流，但每发独立线程执行——
-    上一发 ReadTimeout(20s) 不再阻塞后续发射把窗口外的机会挤掉。"""
+    上一发 ReadTimeout(20s) 不再阻塞后续发射把窗口外的机会挤掉。
+
+    target=None（now 立即模式）时不做相对目标计时，只记录发射序与耗时。"""
     from concurrent.futures import ThreadPoolExecutor
 
     shots = []   # [(轮次, 相对目标ms, 耗时ms, 结果文本)]
-    target_ms = target.timestamp() * 1000
+    target_ms = target.timestamp() * 1000 if target else None
     lock = __import__("threading").Lock()
 
     def worker(i):
         send_local = time.time() * 1000
-        rel_ms = (send_local + offset_s * 1000) - target_ms   # 发射时服务器时间相对目标
+        rel_ms = ((send_local + offset_s * 1000) - target_ms) if target_ms else 0
         data, err = exchange_with_retry()
         cost_ms = time.time() * 1000 - send_local
         msg = (data.get("msg") or "无响应") if err is None else f"失败: {err}"
         with lock:
             shots.append((i + 1, rel_ms, cost_ms, msg))
-            log_print(f"[{i + 1}/{RUN_COUNT}] 发送于目标{rel_ms:+.0f}ms 耗时{cost_ms:.0f}ms → {msg}")
+            rel_txt = f"发送于目标{rel_ms:+.0f}ms " if target_ms else ""
+            log_print(f"[{i + 1}/{RUN_COUNT}] {rel_txt}耗时{cost_ms:.0f}ms → {msg}")
         return err is None
 
     log_print(f"开抢：{RUN_COUNT} 发（提交间隔 {TIME_SLEEP}s，各发独立线程含补试）")
@@ -286,7 +296,8 @@ def job(target, offset_s):
 
     log_print("—— 本场统计（按发射序） ——")
     for (n, rel, cost, msg) in sorted(shots):
-        log_print(f"第{n}发: 目标{rel:+.0f}ms 耗时{cost:.0f}ms → {msg}")
+        rel_txt = f" 目标{rel:+.0f}ms" if target_ms else ""
+        log_print(f"第{n}发:{rel_txt} 耗时{cost:.0f}ms → {msg}")
     balance = query_award_balance()
     if balance is not None:
         log_print(f"抢后余额确认：当前券种可用 {balance} 张")
@@ -324,6 +335,12 @@ def main():
     if info.get("result") != "0":
         raise SystemExit("会话已失效，请在安卓 App 或网页版重新登录该手机号")
     log_print(f"会话有效（来源: {source}），用户: {info.get('name') or '未知'}")
+
+    # now 立即模式：跳过档位等待直接发射（手动补抢/链路验证）
+    if "now" in (sys.argv[1:] if len(sys.argv) > 1 else []):
+        log_print("【立即模式】跳过档位等待，直接发射")
+        job(None, 0.0)
+        return
 
     # 先定档位再校准：校准/预热耗时可能吃掉档位窗口（11-20 fff2 场教训），
     # 档位必须先锁定；错过后有 30s 宽限护栏（见下方 delta 判定）
