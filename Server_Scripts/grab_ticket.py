@@ -177,13 +177,13 @@ def wait_until_target(target, offset_s, fire_lead_ms):
             except Exception as e:
                 log_print(f"连接预热失败: {e.__class__.__name__}")
             warmed = True
-        if diff_ms > 3600:
+        if diff_ms > 3600_000:
             time.sleep(300)
-        elif diff_ms > 600:
+        elif diff_ms > 600_000:
             time.sleep(60)
-        elif diff_ms > 60:
+        elif diff_ms > 60_000:
             time.sleep(30)
-        elif diff_ms > 2000:
+        elif diff_ms > 2_000:
             time.sleep(0.5)
         else:
             time.sleep(0.01)
