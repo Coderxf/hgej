@@ -33,6 +33,34 @@ RUN_COUNT = max(1, min(RUN_COUNT, 20))
 TIME_SLEEP = max(TIME_SLEEP, 0.15)
 
 
+def extract_anchor_offsets(results):
+    """从扫描样本提取秒界锚点偏移（纯函数，可单测）。
+
+    results: [(本地 epoch 毫秒中点, Date 秒值), ...] 已按时间排序。
+    返回 (offsets 列表, 日志行列表)。跨秒异常锚点（相邻跳变间隔偏离
+    1000ms 超过 ±100）剔除。
+    """
+    jumps = []   # [(S_new_epoch_ms, 边界对应本地 epoch ms)]
+    for i in range(1, len(results)):
+        s_prev, s_curr = results[i - 1][1], results[i][1]
+        if s_curr != s_prev:
+            boundary_local = (results[i - 1][0] + results[i][0]) / 2
+            jumps.append((s_curr * 1000, boundary_local))
+
+    log_lines = [f"扫描样本 {len(results)} 个，捕获跳变 {len(jumps)} 次"]
+    if not jumps:
+        return [], log_lines
+
+    offsets = [jumps[0][0] - jumps[0][1]]
+    for i in range(1, len(jumps)):
+        span = jumps[i][0] - jumps[i - 1][0]
+        if not (900 <= span <= 1100):
+            log_lines.append(f"  跳变间隔 {span:.0f}ms 异常，剔除该锚点")
+            continue
+        offsets.append(jumps[i][0] - jumps[i][1])
+    return offsets, log_lines
+
+
 def phase_scan_offset(max_seconds=2.6):
     """秒跳变扫描校准（毫秒级）。
 
@@ -78,31 +106,17 @@ def phase_scan_offset(max_seconds=2.6):
 
     results.sort()
     if len(results) < 30:
-        log_print(f"跳变扫描样本不足（{len(results)}）")
+        log_lines = [f"跳变扫描样本不足（{len(results)}）"]
+        for line in log_lines:
+            log_print(line)
         return None
 
-    # 找跳变点：Date 秒值递增的时刻
-    jumps = []   # [(S_new_epoch_ms, 边界对应本地 epoch ms)]
-    for i in range(1, len(results)):
-        s_prev, s_curr = results[i - 1][1], results[i][1]
-        if s_curr != s_prev:
-            # 跳变发生在 (t_mid[i-1], t_mid[i]] 区间内，取中点估计边界
-            boundary_local = (results[i - 1][0] + results[i][0]) / 2
-            jumps.append((s_curr * 1000, boundary_local, s_curr - s_prev))
-
-    log_print(f"扫描样本 {len(results)} 个，捕获跳变 {len(jumps)} 次")
-    if not jumps:
+    offsets, log_lines = extract_anchor_offsets(results)
+    for line in log_lines:
+        log_print(line)
+    if not offsets:
         return None
 
-    # 锚点合并：相邻锚点 epoch 差应≈1000ms；跨秒异常（响应间隔内跨了
-    # 多个秒界）的锚点剔除——以首个锚点为基准
-    offsets = [jumps[0][0] - jumps[0][1]]
-    for i in range(1, len(jumps)):
-        span = jumps[i][0] - jumps[i - 1][0]
-        if not (900 <= span <= 1100):
-            log_print(f"  跳变间隔 {span:.0f}ms 异常，剔除该锚点")
-            continue
-        offsets.append(jumps[i][0] - jumps[i][1])
     offset_ms = sum(offsets) / len(offsets)
     spread = (max(offsets) - min(offsets)) if len(offsets) > 1 else 0
     log_print(f"有效锚点 {len(offsets)} 个，偏移 {offset_ms:+.0f}ms（多锚点极差 {spread:.0f}ms）")
@@ -142,15 +156,34 @@ def fast_sync_offset():
     return offset_s, rtt_ms / 2, rtt_ms
 
 
-def get_next_run_time():
-    """下一个抢券档位：7:00 / 11:30 / 17:00，超过 17:00 取明天 7:00。"""
-    now = datetime.now()
+def get_next_run_time(now=None):
+    """下一个抢券档位：7:00 / 11:30 / 17:00，超过 17:00 取明天 7:00。
+    now 可注入（单测用），缺省取当前时间。"""
+    now = now or datetime.now()
     today = now.date()
     for h, m in [(7, 0), (11, 30), (17, 0)]:
         t = datetime.combine(today, datetime.strptime(f"{h:02d}:{m:02d}", "%H:%M").time())
         if now < t:
             return t
     return datetime.combine(today + timedelta(days=1), datetime.strptime("07:00", "%H:%M").time())
+
+
+def next_wait_ms(diff_ms):
+    """卡点等待梯度（纯函数，可单测）。
+
+    diff_ms = 距目标的服务器时间毫秒数，返回本轮应休眠的毫秒数。
+    梯度与 diff 同单位（毫秒）——11-21 事故教训：毫秒判定配秒级休眠
+    导致 sleep(300) 卡死整场（25s 被当成 25h）。
+    """
+    if diff_ms > 3_600_000:
+        return 300_000
+    if diff_ms > 600_000:
+        return 60_000
+    if diff_ms > 60_000:
+        return 30_000
+    if diff_ms > 2_000:
+        return 500
+    return 10
 
 
 def wait_until_target(target, offset_s, fire_lead_ms):
@@ -165,8 +198,7 @@ def wait_until_target(target, offset_s, fire_lead_ms):
     warmed = False
     while True:
         now_ms = (time.time() + offset_s) * 1000
-        target_ms = target.timestamp() * 1000
-        diff_ms = target_ms - now_ms
+        diff_ms = target.timestamp() * 1000 - now_ms
         if diff_ms <= fire_lead_ms:
             return True, max(0, -diff_ms)   # 实际提前发射了多少
         if diff_ms > 5000 and not warmed:
@@ -177,16 +209,7 @@ def wait_until_target(target, offset_s, fire_lead_ms):
             except Exception as e:
                 log_print(f"连接预热失败: {e.__class__.__name__}")
             warmed = True
-        if diff_ms > 3600_000:
-            time.sleep(300)
-        elif diff_ms > 600_000:
-            time.sleep(60)
-        elif diff_ms > 60_000:
-            time.sleep(30)
-        elif diff_ms > 2_000:
-            time.sleep(0.5)
-        else:
-            time.sleep(0.01)
+        time.sleep(next_wait_ms(diff_ms) / 1000)
 
 
 def _is_transient(msg):

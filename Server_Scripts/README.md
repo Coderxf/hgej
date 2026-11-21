@@ -62,6 +62,9 @@ scp Server_Scripts/hz_common.py Server_Scripts/daily_task.py Server_Scripts/grab
 # 服务器：依赖
 pip3 install requests pycryptodome pycryptodomex -i https://mirrors.aliyun.com/pypi/simple/
 
+# 部署前必跑单元测试（等待梯度/档位/锚点提取等核心逻辑，0.02s 跑完）
+python3 -m unittest test_grab_ticket -v
+
 # 手动运行（凭据中心模式）
 export HANGGONG_CRED_API="https://777713.xyz"
 export HANGGONG_ACC=178                     # 或直接 export HANGGONG_USER_ID=<加密串>
