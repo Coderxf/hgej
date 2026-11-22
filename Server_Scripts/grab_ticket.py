@@ -266,30 +266,46 @@ def job(target, offset_s):
     """并发发射：submit 按间隔节流，但每发独立线程执行——
     上一发 ReadTimeout(20s) 不再阻塞后续发射把窗口外的机会挤掉。
 
-    target=None（now 立即模式）时不做相对目标计时，只记录发射序与耗时。"""
+    target=None（now 立即模式）时不做相对目标计时，只记录发射序与耗时。
+    跟随模式：收到「活动还未开始」的发射线程在 T0 后每 500ms 自动重发，
+    咬住真实放券时刻（部分档位放券晚于整点，11-22 07:00 场实测
+    T0+15s 仍未开始），上限 T0+60s。"""
     from concurrent.futures import ThreadPoolExecutor
+    import itertools
 
-    shots = []   # [(轮次, 相对目标ms, 耗时ms, 结果文本)]
+    shots = []   # [(序, 相对目标ms, 耗时ms, 结果文本)]
     target_ms = target.timestamp() * 1000 if target else None
     lock = __import__("threading").Lock()
+    seq = itertools.count(start=1)
 
-    def worker(i):
-        send_local = time.time() * 1000
-        rel_ms = ((send_local + offset_s * 1000) - target_ms) if target_ms else 0
-        data, err = exchange_with_retry()
-        cost_ms = time.time() * 1000 - send_local
-        msg = (data.get("msg") or "无响应") if err is None else f"失败: {err}"
-        with lock:
-            shots.append((i + 1, rel_ms, cost_ms, msg))
-            rel_txt = f"发送于目标{rel_ms:+.0f}ms " if target_ms else ""
-            log_print(f"[{i + 1}/{RUN_COUNT}] {rel_txt}耗时{cost_ms:.0f}ms → {msg}")
-        return err is None
+    def worker():
+        n = next(seq)
+        deadline_ms = (target_ms + 60_000) if target_ms else None
+        attempt = 0
+        while True:
+            send_local = time.time() * 1000
+            rel_ms = ((send_local + offset_s * 1000) - target_ms) if target_ms else 0
+            data, err = exchange_with_retry()
+            cost_ms = time.time() * 1000 - send_local
+            msg = (data.get("msg") or "无响应") if err is None else f"失败: {err}"
+            attempt += 1
+            done = err is None or "还未开始" not in msg
+            past_deadline = deadline_ms is not None and time.time() * 1000 > deadline_ms
+            with lock:
+                shots.append((n, rel_ms, cost_ms, msg))
+                rel_txt = f"发送于目标{rel_ms:+.0f}ms " if target_ms else ""
+                extra = f"（第{attempt}次尝试）" if attempt > 1 else ""
+                log_print(f"[{n}/{RUN_COUNT}] {rel_txt}耗时{cost_ms:.0f}ms → {msg}{extra}")
+            if done or past_deadline or not target_ms:
+                return err is None
+            log_print("活动未开始，500ms 后跟随重试...")
+            time.sleep(0.5)
 
-    log_print(f"开抢：{RUN_COUNT} 发（提交间隔 {TIME_SLEEP}s，各发独立线程含补试）")
-    with ThreadPoolExecutor(max_workers=RUN_COUNT) as ex:
+    log_print(f"开抢：{RUN_COUNT} 发（提交间隔 {TIME_SLEEP}s，各发独立线程含补试+跟随）")
+    with ThreadPoolExecutor(max_workers=RUN_COUNT * 2) as ex:
         futures = []
         for i in range(RUN_COUNT):
-            futures.append(ex.submit(worker, i + 1))
+            futures.append(ex.submit(worker))
             if i < RUN_COUNT - 1:
                 time.sleep(TIME_SLEEP)
         success = sum(f.result() for f in futures)
