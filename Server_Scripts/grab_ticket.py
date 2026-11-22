@@ -262,6 +262,12 @@ def query_award_balance():
         return None
 
 
+def is_not_started(text):
+    """跟随判定（纯函数，可单测）：响应是否为「活动还未开始」类"""
+    t = (text or "").lower()
+    return "还未开始" in t or "未开始" in t
+
+
 def job(target, offset_s):
     """并发发射：submit 按间隔节流，但每发独立线程执行——
     上一发 ReadTimeout(20s) 不再阻塞后续发射把窗口外的机会挤掉。
@@ -288,8 +294,10 @@ def job(target, offset_s):
             data, err = exchange_with_retry()
             cost_ms = time.time() * 1000 - send_local
             msg = (data.get("msg") or "无响应") if err is None else f"失败: {err}"
+            text = msg if err is None else err
             attempt += 1
-            done = err is None or "还未开始" not in msg
+            # 跟随判定：只有「活动还未开始」需要咬住放券时刻重发
+            done = not is_not_started(text)
             past_deadline = deadline_ms is not None and time.time() * 1000 > deadline_ms
             with lock:
                 shots.append((n, rel_ms, cost_ms, msg))

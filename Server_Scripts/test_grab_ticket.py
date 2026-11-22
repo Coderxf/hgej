@@ -145,6 +145,23 @@ class IsTransientTest(unittest.TestCase):
         self.assertFalse(grab_ticket._is_transient("请先登录"))
 
 
+class FollowModeTest(unittest.TestCase):
+    """跟随判定：只有「活动还未开始」需要咬住放券时刻重发（11-22 事故回归）"""
+
+    def test_not_started_variants(self):
+        self.assertTrue(grab_ticket.is_not_started("活动还未开始！"))
+        self.assertTrue(grab_ticket.is_not_started("活动未开始"))
+        self.assertTrue(grab_ticket.is_not_started("尚未开始"))
+
+    def test_other_results(self):
+        # 这些结果直接完成，禁止误入跟随循环
+        self.assertFalse(grab_ticket.is_not_started("手慢啦，优惠券被抢光了"))
+        self.assertFalse(grab_ticket.is_not_started("兑换成功"))
+        self.assertFalse(grab_ticket.is_not_started("请勿重复提交"))
+        self.assertFalse(grab_ticket.is_not_started("请先登录"))
+        self.assertFalse(grab_ticket.is_not_started(""))
+
+
 class ExchangeWithRetryTest(unittest.TestCase):
     """瞬时失败补试一次；业务失败立即放弃"""
 
