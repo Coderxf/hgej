@@ -6,6 +6,7 @@ import android.content.Context
 import android.content.ContextWrapper
 import android.content.pm.PackageManager
 import android.graphics.BitmapFactory
+import android.view.WindowManager
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.Image
@@ -28,6 +29,8 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import com.dt.hgej.util.ScreenCapture
 import com.dt.hgej.util.Utils
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.text.SimpleDateFormat
@@ -45,6 +48,22 @@ fun QrScreen(
     val activity = remember { context.findActivity() }
     val scope = rememberCoroutineScope()
     val snackbarHostState = remember { SnackbarHostState() }
+
+    // 乘车码场景增强：屏幕常亮 + 临时最高亮度（扫码可读性），离开页面恢复
+    DisposableEffect(Unit) {
+        val window = activity?.window
+        val oldBrightness = window?.attributes?.screenBrightness
+        if (window != null) {
+            window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+            window.attributes = window.attributes.apply { screenBrightness = 1f }
+        }
+        onDispose {
+            window?.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+            if (window != null && oldBrightness != null) {
+                window.attributes = window.attributes.apply { screenBrightness = oldBrightness }
+            }
+        }
+    }
 
     suspend fun doCapture() {
         val window = activity?.window ?: return
@@ -182,6 +201,40 @@ fun QrScreen(
                                     style = MaterialTheme.typography.bodyMedium,
                                     color = MaterialTheme.colorScheme.error
                                 )
+                            }
+
+                            // 有效期倒计时 + 过期自动刷新（动态码过期重取是官方 App 标准行为）
+                            val deadSec = (qrCode.deadTime ?: qrCode.deadline)?.toLongOrNull()
+                            if (deadSec != null && deadSec > 0) {
+                                var remain by remember(deadSec) {
+                                    mutableStateOf((deadSec - System.currentTimeMillis() / 1000).toInt())
+                                }
+                                var autoRefreshed by remember(deadSec) { mutableStateOf(false) }
+                                LaunchedEffect(deadSec) {
+                                    while (isActive && remain > 0) {
+                                        delay(1000)
+                                        remain = (deadSec - System.currentTimeMillis() / 1000).toInt()
+                                    }
+                                    if (remain <= 0 && !autoRefreshed && isActive) {
+                                        autoRefreshed = true
+                                        viewModel.loadData()   // 过期自动刷新一次
+                                    }
+                                }
+                                if (remain > 0) {
+                                    val color = if (remain <= 30) MaterialTheme.colorScheme.error
+                                                else MaterialTheme.colorScheme.onSurfaceVariant
+                                    Text(
+                                        "剩余有效 " + if (remain >= 60) "${remain / 60}分${remain % 60}秒" else "${remain}秒",
+                                        style = MaterialTheme.typography.labelMedium,
+                                        color = color
+                                    )
+                                } else if (!autoRefreshed) {
+                                    Text(
+                                        "已过期，正在自动刷新...",
+                                        style = MaterialTheme.typography.labelMedium,
+                                        color = MaterialTheme.colorScheme.error
+                                    )
+                                }
                             }
 
                             Divider()

@@ -1,7 +1,7 @@
 {
-  "versionCode": 19,
-  "versionName": "1.1.15",
-  "downloadUrl": "https://777713.xyz/update/杭工助手-v1.1.15-release.apk",
-  "changelog": "1. 修复新登录账户同步到服务器时缺少昵称的问题（昵称回填后自动补同步）\n2. 凭据上报改为按登录设备记录：登录只上报刚登录的账户并携带该设备真实 UA，不再覆盖其他设备上报的账户信息\n3. 乘车码获取失败/数据异常时显示明确错误提示，不再白屏",
+  "versionCode": 20,
+  "versionName": "1.1.16",
+  "downloadUrl": "https://777713.xyz/update/杭工助手-v1.1.16-release.apk",
+  "changelog": "1. 乘车码页增强：屏幕常亮+临时最高亮度（扫码更清晰），离开页面自动恢复\n2. 有效期倒计时实时显示，临近 30 秒变红提醒\n3. 乘车码过期后自动刷新新码（无需手动点击）",
   "forceUpdate": false
 }
