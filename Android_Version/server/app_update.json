@@ -1,7 +1,7 @@
 {
-  "versionCode": 20,
-  "versionName": "1.1.16",
-  "downloadUrl": "https://777713.xyz/update/杭工助手-v1.1.16-release.apk",
-  "changelog": "1. 乘车码页增强：屏幕常亮+临时最高亮度（扫码更清晰），离开页面自动恢复\n2. 有效期倒计时实时显示，临近 30 秒变红提醒\n3. 乘车码过期后自动刷新新码（无需手动点击）",
+  "versionCode": 21,
+  "versionName": "1.1.17",
+  "downloadUrl": "https://777713.xyz/update/杭工助手-v1.1.17-release.apk",
+  "changelog": "1. 默认券种改为 6 元（ID 11），默认次数改为 3 次\n2. 抢票次数/间隔的历史遗留异常值自动规范化（次数钳制 1~20、间隔 ≥0.15）\n3. 新增强制更新规则：本地落后线上 3 个版本以上、或大版本号不同时，更新弹窗强制不可关闭\n4. 凭据字段标签优化：显示券种取值说明与次数范围",
   "forceUpdate": false
 }

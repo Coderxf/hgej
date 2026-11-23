@@ -23,6 +23,8 @@ object UpdateManager {
     /**
      * 检查更新：服务器 versionCode 大于本地版本时返回 UpdateInfo，否则返回 null。
      * force=true 时忽略版本号比较（开发者五连击触发，用于重复安装同一版本测试）。
+     * 强制规则（不受 json forceUpdate 字段影响）：本地落后线上 ≥3 个版本，
+     * 或 versionName 大版本号不同（如 1.x vs 2.x）——判定为必须升级。
      */
     suspend fun checkForUpdate(context: Context, force: Boolean = false): UpdateInfo? = withContext(Dispatchers.IO) {
         try {
@@ -39,10 +41,24 @@ object UpdateManager {
                 null
             } ?: return@withContext null
             if (info.versionCode <= 0 || info.downloadUrl.isNullOrBlank()) return@withContext null
-            if (force || info.versionCode > currentVersionCode(context)) info else null
+            if (!force && info.versionCode <= currentVersionCode(context)) return@withContext null
+
+            // 强制判定：落后 ≥3 个版本 或 大版本号不同
+            val behind = info.versionCode - currentVersionCode(context)
+            val majorDiff = majorOf(info.versionName) != majorOf(currentVersionName(context))
+            if (behind >= 3 || majorDiff) info.copy(forceUpdate = true) else info
         } catch (e: Exception) {
             null
         }
+    }
+
+    private fun majorOf(versionName: String?): String =
+        versionName?.trim()?.substringBefore('.') ?: ""
+
+    fun currentVersionName(context: Context): String = try {
+        context.packageManager.getPackageInfo(context.packageName, 0).versionName ?: ""
+    } catch (e: Exception) {
+        ""
     }
 
     fun currentVersionCode(context: Context): Long = try {

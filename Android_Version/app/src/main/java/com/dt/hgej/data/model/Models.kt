@@ -124,9 +124,9 @@ data class UserConfig(
     val loginName: String = "",
     val sesId: String = "",
     val userId: String = "",
-    val exchangeId: String = "10",
+    val exchangeId: String = "11",
     val runTime: String = "",
-    val runCount: String = "100",
+    val runCount: String = "3",
     val timeSleep: String = "0.2"
 )
 

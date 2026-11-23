@@ -319,7 +319,7 @@ fun ConfigForm(
             OutlinedTextField(
                 value = config.exchangeId,
                 onValueChange = { onConfigChange(config.copy(exchangeId = it)) },
-                label = { Text("EXCHANGE_ID") },
+                label = { Text("券种 9=2元 10=4元 11=6元") },
                 singleLine = true,
                 modifier = Modifier.weight(1f),
                 textStyle = MaterialTheme.typography.bodySmall
@@ -327,7 +327,7 @@ fun ConfigForm(
             OutlinedTextField(
                 value = config.runCount,
                 onValueChange = { onConfigChange(config.copy(runCount = it)) },
-                label = { Text("次数") },
+                label = { Text("次数(1~20)") },
                 singleLine = true,
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                 modifier = Modifier.weight(1f),

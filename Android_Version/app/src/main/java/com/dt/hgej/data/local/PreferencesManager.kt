@@ -60,13 +60,16 @@ class PreferencesManager(private val context: Context) {
 
     // ================= 排程配置（全局共享） =================
 
-    /** 排程配置（不含凭据）：loginName/sesId/userId 恒为空串，凭据从账户列表取 */
+    /** 排程配置（不含凭据）：loginName/sesId/userId 恒为空串，凭据从账户列表取。
+     *  读取时规范化历史遗留值：次数钳制 1~20（如旧数据 10006）、间隔 ≥0.15 */
     val scheduleConfig: Flow<UserConfig> = context.dataStore.data.map { prefs ->
+        val runCount = (prefs[RUN_COUNT]?.toIntOrNull() ?: 3).coerceIn(1, 20)
+        val sleep = (prefs[TIME_SLEEP]?.toDoubleOrNull() ?: 0.2).coerceAtLeast(0.15)
         UserConfig(
-            exchangeId = prefs[EXCHANGE_ID] ?: "10",
+            exchangeId = prefs[EXCHANGE_ID] ?: "11",
             runTime = prefs[RUN_TIME] ?: "",
-            runCount = prefs[RUN_COUNT] ?: "100",
-            timeSleep = prefs[TIME_SLEEP] ?: "0.2"
+            runCount = runCount.toString(),
+            timeSleep = sleep.toBigDecimal().stripTrailingZeros().toPlainString()
         )
     }
 
