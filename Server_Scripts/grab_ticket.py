@@ -349,11 +349,23 @@ def main():
         log_print("已采用账户上报的真实设备 UA")
 
     log_print("校验会话...")
-    try:
-        info = query_user_info(LOGIN_NAME, SES_ID)
-    except HzApiError as e:
+    info = None
+    val_err = None
+    for attempt in range(3):   # 峰值期上游偶发超时/5xx：校验重试而非直接放弃整场
+        try:
+            info = query_user_info(LOGIN_NAME, SES_ID)
+            val_err = None
+            break
+        except HzApiError as e:
+            val_err = str(e)
+            if attempt < 2 and _is_transient(val_err):
+                log_print(f"校验瞬时失败（{val_err}），1 秒后重试（{attempt + 1}/3）...")
+                time.sleep(1)
+                continue
+            break
+    if info is None:
         raise SystemExit(
-            f"会话校验失败: {e}\n"
+            f"会话校验失败: {val_err}\n"
             "请在安卓 App 或网页版重新登录该手机号，凭据会自动同步"
         )
     if info.get("result") != "0":
