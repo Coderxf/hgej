@@ -211,7 +211,7 @@ def wait_until_target(target, offset_s, fire_lead_ms):
         if diff_ms > 5000 and not warmed:
             try:
                 t0 = time.monotonic()
-                session.get("https://app.hzgh.org.cn", timeout=(8, 20), verify=True)
+                session.get("https://app.hzgh.org.cn", timeout=(3, 5), verify=True)
                 log_print(f"连接预热完成（{time.monotonic() - t0:.0f}ms），整点首飞免握手")
             except Exception as e:
                 log_print(f"连接预热失败: {e.__class__.__name__}")
@@ -269,16 +269,14 @@ def is_not_started(text):
 
 
 def job(target, offset_s):
-    """并发发射：submit 按间隔节流，但每发独立线程执行——
-    上一发 ReadTimeout(20s) 不再阻塞后续发射把窗口外的机会挤掉。
+    """串行发射：上一发完成后再发下一发（间隔 TIME_SLEEP 从完成时刻起算）。
 
+    服务器对同账户并发 OL41 会返回「请勿重复提交」去重（11-23 孔场实测：
+    3 发并发 2 发被去重）——并发 3 发实际等效 1 发，因此串行保证每发
+    都被独立处理。
     target=None（now 立即模式）时不做相对目标计时，只记录发射序与耗时。
     跟随模式：收到「活动还未开始」的发射线程在 T0 后每 500ms 自动重发，
-    咬住真实放券时刻（部分档位放券晚于整点，11-22 07:00 场实测
-    T0+15s 仍未开始），上限 T0+60s。"""
-    from concurrent.futures import ThreadPoolExecutor
-    import itertools
-
+    咬住真实放券时刻（17:00 场实测放券晚于整点 2 秒+），上限 T0+60s。"""
     shots = []   # [(序, 相对目标ms, 耗时ms, 结果文本)]
     target_ms = target.timestamp() * 1000 if target else None
     lock = __import__("threading").Lock()
@@ -309,13 +307,9 @@ def job(target, offset_s):
             log_print("活动未开始，500ms 后跟随重试...")
             time.sleep(0.5)
 
-    log_print(f"开抢：{RUN_COUNT} 发（提交间隔 {TIME_SLEEP}s，各发独立线程含补试+跟随）")
-    with ThreadPoolExecutor(max_workers=RUN_COUNT * 2) as ex:
-        futures = []
-        for i in range(RUN_COUNT):
-            futures.append(ex.submit(worker))
-            if i < RUN_COUNT - 1:
-                time.sleep(TIME_SLEEP)
+    log_print(f"开抢：{RUN_COUNT} 发（串行，间隔 {TIME_SLEEP}s，含跟随）")
+    with ThreadPoolExecutor(max_workers=1) as ex:
+        futures = [ex.submit(worker) for _ in range(RUN_COUNT)]
         success = sum(f.result() for f in futures)
 
     log_print("—— 本场统计（按发射序） ——")
@@ -416,11 +410,25 @@ def main():
             scan = phase_scan_offset(max_seconds=4.0)
         if scan is not None:
             offset_s, _ = scan
-            start = time.monotonic()
-            session.get("https://app.hzgh.org.cn", timeout=(8, 20), verify=True)
-            one_way_ms = (time.monotonic() - start) * 1000 / 2
-            log_print(f"毫秒级对齐完成（跳变扫描），单程延迟 {one_way_ms:.0f}ms")
+            try:
+                start = time.monotonic()
+                session.get("https://app.hzgh.org.cn", timeout=(3, 5), verify=True)
+                one_way_ms = (time.monotonic() - start) * 1000 / 2
+                log_print(f"毫秒级对齐完成（跳变扫描），单程延迟 {one_way_ms:.0f}ms")
+            except Exception as e:
+                # 该 GET 崩溃会让整场任务一次都不发射（11-24 陈艳场），保底 5ms
+                log_print(f"单程延迟测量失败: {e.__class__.__name__}，取 5ms")
+                one_way_ms = 5.0
     lead = max(FIRE_LEAD_MS, one_way_ms)
+
+    # 发射前错过检查：校准/预热耗时越过整点超 3s → 申明跳过（此时发射必然空手）
+    now_srv_ms = time.time() * 1000 + offset_s * 1000
+    past_ms = now_srv_ms - target.timestamp() * 1000
+    if past_ms > 3000:
+        log_print(f"准备耗时越过档位 {past_ms / 1000:.0f}s，券已放完，本场跳过")
+        return
+    if past_ms > 0:
+        log_print(f"已过整点 {past_ms:.0f}ms，宽限内立即开抢")
 
     log_print(f"程序已启动，将在 {target} 执行兑换，共 {RUN_COUNT} 次，间隔 {TIME_SLEEP}s")
     log_print(f"发射提前量 {lead:.0f}ms（单程延迟 {one_way_ms:.0f}ms）")
