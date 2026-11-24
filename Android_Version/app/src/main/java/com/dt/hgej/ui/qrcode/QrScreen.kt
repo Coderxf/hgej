@@ -49,19 +49,12 @@ fun QrScreen(
     val scope = rememberCoroutineScope()
     val snackbarHostState = remember { SnackbarHostState() }
 
-    // 乘车码场景增强：屏幕常亮 + 临时最高亮度（扫码可读性），离开页面恢复
+    // 乘车码场景：屏幕常亮（扫码不熄屏）。不做亮度干预——高亮刺眼，维持系统亮度
     DisposableEffect(Unit) {
         val window = activity?.window
-        val oldBrightness = window?.attributes?.screenBrightness
-        if (window != null) {
-            window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
-            window.attributes = window.attributes.apply { screenBrightness = 1f }
-        }
+        window?.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
         onDispose {
             window?.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
-            if (window != null && oldBrightness != null) {
-                window.attributes = window.attributes.apply { screenBrightness = oldBrightness }
-            }
         }
     }
 
