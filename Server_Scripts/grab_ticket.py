@@ -271,14 +271,14 @@ def is_not_started(text):
 
 
 def job(target, offset_s):
-    """串行发射：上一发完成后再发下一发（间隔 TIME_SLEEP 从完成时刻起算）。
+    """齐发模式：RUN_COUNT 发在 T0 同时射出，各发独立跟随。
 
-    服务器对同账户并发 OL41 会返回「请勿重复提交」去重（11-23 孔场实测：
-    3 发并发 2 发被去重）——并发 3 发实际等效 1 发，因此串行保证每发
-    都被独立处理。
-    target=None（now 立即模式）时不做相对目标计时，只记录发射序与耗时。
-    跟随模式：收到「活动还未开始」的发射线程在 T0 后每 500ms 自动重发，
-    咬住真实放券时刻（17:00 场实测放券晚于整点 2 秒+），上限 T0+60s。"""
+    实战结论：齐发可命中 2 发；串行等上一发完成（高峰 3~30s 排队）
+    再发射，后续发全部落在窗口外基本无希望。「请勿重复提交」去重
+    只拒绝正在处理中的重复请求，不影响已完成的兄弟发。
+    跟随模式：收到「活动还未开始」每 500ms 重发，咬住延迟放券时刻
+    （17:00 场实测放券晚于整点 2 秒+），上限 T0+60s。
+    target=None（now 立即模式）时不做相对目标计时，只记录发射序与耗时。"""
     shots = []   # [(序, 相对目标ms, 耗时ms, 结果文本)]
     target_ms = target.timestamp() * 1000 if target else None
     lock = __import__("threading").Lock()
@@ -309,8 +309,8 @@ def job(target, offset_s):
             log_print("活动未开始，500ms 后跟随重试...")
             time.sleep(0.5)
 
-    log_print(f"开抢：{RUN_COUNT} 发（串行，间隔 {TIME_SLEEP}s，含跟随）")
-    with ThreadPoolExecutor(max_workers=1) as ex:
+    log_print(f"开抢：{RUN_COUNT} 发齐发（含跟随）")
+    with ThreadPoolExecutor(max_workers=RUN_COUNT) as ex:
         futures = [ex.submit(worker) for _ in range(RUN_COUNT)]
         success = sum(f.result() for f in futures)
 
