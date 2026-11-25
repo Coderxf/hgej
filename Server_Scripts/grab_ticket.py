@@ -24,6 +24,8 @@ grab_ticket.py - 定时抢票：等下一个 7:00 / 11:30 / 17:00 卡点并发�
 import os
 import sys
 import time
+import itertools
+from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timedelta
 
 from hz_common import (HzApiError, exchange_once, log_print,

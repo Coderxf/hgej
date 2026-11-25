@@ -129,6 +129,27 @@ class ExtractAnchorOffsetsTest(unittest.TestCase):
         self.assertEqual(offsets, [])
 
 
+class JobDepsTest(unittest.TestCase):
+    """回归：job() 运行时依赖必须模块级可用。
+
+    2026-11-25 事故：job() 使用 itertools/ThreadPoolExecutor 但模块级
+    import 缺失，py_compile/unittest 均不报错，直到真实场次运行时
+    NameError 崩掉整场（07:00/11:30 三场全废）。
+    """
+
+    def test_job_runtime_deps_importable(self):
+        self.assertTrue(hasattr(grab_ticket, "itertools"), "缺少模块级 import itertools")
+        self.assertTrue(hasattr(grab_ticket, "ThreadPoolExecutor"), "缺少 ThreadPoolExecutor 导入")
+
+    def test_job_smoke_with_mocks(self):
+        """job() 冒烟：mock 掉网络与等待，完整跑一遍 3 发不抛 NameError"""
+        with patch.object(grab_ticket, "exchange_with_retry",
+                          side_effect=[({"msg": "兑换成功"}, None)] * 3), \
+             patch.object(grab_ticket, "query_award_balance", return_value=2), \
+             patch.object(grab_ticket.time, "sleep"):
+            grab_ticket.job(None, 0.0)   # NameError（itertools 等）会在此暴露
+
+
 class IsTransientTest(unittest.TestCase):
     """瞬时失败判定：超时/5xx 补试，业务失败不补试"""
 
