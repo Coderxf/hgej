@@ -271,11 +271,13 @@ def is_not_started(text):
 
 
 def job(target, offset_s):
-    """齐发模式：RUN_COUNT 发在 T0 同时射出，各发独立跟随。
+    """错峰齐发：RUN_COUNT 发按 40ms 阶梯错开射出（各发独立跟随）。
 
     实战结论：齐发可命中 2 发；串行等上一发完成（高峰 3~30s 排队）
-    再发射，后续发全部落在窗口外基本无希望。「请勿重复提交」去重
-    只拒绝正在处理中的重复请求，不影响已完成的兄弟发。
+    再发射，后续发全部落在窗口外基本无希望。
+    错峰而非同毫秒齐射：完全同时的请求会挤进同一个处理槽触发
+    「请勿重复提交」去重，错开几十毫秒让每发各占独立处理位，
+    总展开 ~80ms 仍稳落在整点突发窗口内。
     跟随模式：收到「活动还未开始」每 500ms 重发，咬住延迟放券时刻
     （17:00 场实测放券晚于整点 2 秒+），上限 T0+60s。
     target=None（now 立即模式）时不做相对目标计时，只记录发射序与耗时。"""
@@ -283,9 +285,11 @@ def job(target, offset_s):
     target_ms = target.timestamp() * 1000 if target else None
     lock = __import__("threading").Lock()
     seq = itertools.count(start=1)
+    stagger_s = 0.04   # 每发错峰 40ms
 
     def worker():
         n = next(seq)
+        time.sleep((n - 1) * stagger_s)   # 错峰阶梯
         deadline_ms = (target_ms + 60_000) if target_ms else None
         attempt = 0
         while True:
